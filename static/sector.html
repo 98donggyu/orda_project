@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오르다 - 산업 분석</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/page.css">
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo">오르다</div>
+                <div class="logo-subtitle">투자 학습 플랫폼</div>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item" onclick="navigateTo('home')"><span class="nav-icon">🏠</span><span>Home</span></div>
+                <div class="nav-item" onclick="navigateTo('news')"><span class="nav-icon">📰</span><span>News</span></div>
+                <div class="nav-item active" onclick="navigateTo('sector')"><span class="nav-icon">🏭</span><span>Sector</span></div>
+                <div class="nav-item" onclick="navigateTo('company')"><span class="nav-icon">🏢</span><span>Company</span></div>
+                <div class="nav-item" onclick="navigateTo('mock-invest')"><span class="nav-icon">📈</span><span>Mock Invest</span></div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="page-header">
+                <div class="breadcrumb">Home → Sector</div>
+                <h1 class="page-title">🏭 산업 분석</h1>
+                <p class="page-subtitle">KRX 기준 산업 분류별로 관련 이슈와 투자 흐름을 분석해보세요.</p>
+            </div>
+            
+            <div class="search-filter-section">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" class="search-input" placeholder="산업명, 키워드로 검색..." id="sector-search">
+                </div>
+            </div>
+            
+            <div class="sectors-section">
+                <h2 class="section-title" id="sector-list-title">주요 산업 분류</h2>
+                <div class="sectors-grid" id="sectors-container"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let allSectors = [];
+        let searchTimeout;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSectors();
+            setupEventListeners();
+        });
+
+        async function loadSectors(searchTerm = '') {
+            const container = document.getElementById('sectors-container');
+            container.innerHTML = `<div class="loading"><div class="spinner"></div><p>산업 정보를 DB에서 불러오는 중...</p></div>`;
+
+            const apiUrl = `/api/database/industries?limit=100&search=${encodeURIComponent(searchTerm)}`;
+            
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
+                
+                const sectors = await response.json();
+                if (!Array.isArray(sectors)) throw new Error('데이터 형식이 올바르지 않습니다.');
+                
+                allSectors = sectors;
+                displaySectors(allSectors);
+                document.getElementById('sector-list-title').textContent = `주요 산업 분류 (${allSectors.length}개)`;
+
+            } catch (error) {
+                console.error('❌ 섹터 데이터 로드 실패:', error);
+                container.innerHTML = `<div class="loading"><p class="error-text">${error.message}</p></div>`;
+                showNotification('산업 정보를 불러오는 데 실패했습니다.', 'error');
+            }
+        }
+
+        function displaySectors(sectors) {
+            const container = document.getElementById('sectors-container');
+            container.innerHTML = '';
+
+            if (sectors.length === 0) {
+                container.innerHTML = `<div class="loading"><p>해당 조건에 맞는 산업이 없습니다.</p></div>`;
+                return;
+            }
+            sectors.forEach(sector => container.appendChild(createSectorCard(sector)));
+        }
+
+        function createSectorCard(sector) {
+            const card = document.createElement('div');
+            card.className = 'sector-card';
+            
+            const icons = {'IT': '💻', '금융': '🏦', '정유': '⛽', '의료': '🏥', '음식료': '🍽️', '화학': '🧪', '반도체': '📱', '방위': '🛡️', '운송': '🚗'};
+            const name = sector.krx_name;
+            const iconKey = Object.keys(icons).find(key => name.includes(key));
+            const icon = iconKey ? icons[iconKey] : '🏭';
+
+            card.innerHTML = `
+                <div class="sector-header">
+                    <div class="sector-icon">${icon}</div>
+                    <div class="sector-info">
+                        <div class="sector-name">${name}</div>
+                        <div class="sector-count">${sector.companies || 0}개 기업</div>
+                    </div>
+                </div>
+                <div class="sector-description">${(sector.description || '상세 설명 없음').substring(0, 100)}...</div>
+                <div class="sector-stats">
+                    <div class="stat-item"><div class="stat-value">${sector.recentIssues || 0}</div><div class="stat-label">최근 이슈</div></div>
+                    <div class="stat-item"><div class="stat-value">${sector.monthlyReturn || '+0.0%'}</div><div class="stat-label">월간 수익률</div></div>
+                </div>
+                <div class="sector-actions">
+                    <button class="action-btn btn-primary" onclick="analyzeSector('${name}')">📊 분석하기</button>
+                    <button class="action-btn btn-secondary" onclick="viewCompanies('${name}')">🏢 기업보기</button>
+                </div>
+            `;
+            return card;
+        }
+
+        function setupEventListeners() {
+            const searchInput = document.getElementById('sector-search');
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    loadSectors(e.target.value);
+                }, 500);
+            });
+        }
+
+        function analyzeSector(sectorName) {
+            showNotification(`'${sectorName}' 산업의 상세 분석 페이지로 이동합니다. (구현 예정)`);
+        }
+
+        function viewCompanies(sectorName) {
+            window.location.href = `/static/company.html?sector=${encodeURIComponent(sectorName)}`;
+        }
+
+        function navigateTo(page) {
+            const pages = {
+                'home': '/static/index.html', 'news': '/static/news.html', 
+                'sector': '/static/sector.html', 'company': '/static/company.html', 
+                'mock-invest': '/static/mock-invest.html'
+            };
+            if (window.location.pathname !== pages[page]) {
+                window.location.href = pages[page];
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const colors = {
+                success: 'linear-gradient(135deg, #28a745, #218838)',
+                error: 'linear-gradient(135deg, #dc3545, #c82333)',
+                info: 'linear-gradient(135deg, #17a2b8, #138496)'
+            };
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.style.background = colors[type] || colors.info;
+            notification.innerHTML = `<span>${message}</span><button onclick="this.parentElement.remove()">&times;</button>`;
+            document.body.appendChild(notification);
+            setTimeout(() => { notification.remove(); }, 5000);
+        }
+    </script>
+</body>
+</html>

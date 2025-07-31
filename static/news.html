@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오르다 - 뉴스 분석</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/page.css">
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo">오르다</div>
+                <div class="logo-subtitle">투자 학습 플랫폼</div>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item" onclick="navigateTo('home')"><span class="nav-icon">🏠</span><span>Home</span></div>
+                <div class="nav-item active" onclick="navigateTo('news')"><span class="nav-icon">📰</span><span>News</span></div>
+                <div class="nav-item" onclick="navigateTo('sector')"><span class="nav-icon">🏭</span><span>Sector</span></div>
+                <div class="nav-item" onclick="navigateTo('company')"><span class="nav-icon">🏢</span><span>Company</span></div>
+                <div class="nav-item" onclick="navigateTo('mock-invest')"><span class="nav-icon">📈</span><span>Mock Invest</span></div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="page-header">
+                <div class="breadcrumb">Home → News</div>
+                <h1 class="page-title">📰 과거 뉴스 분석</h1>
+                <p class="page-subtitle" id="page-subtitle">과거 주요 투자 이슈들을 검색하고 AI로 분석해보세요.</p>
+            </div>
+            
+            <div class="search-filter-section">
+                <div class="search-controls">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="news-search-input" class="search-input" placeholder="이슈명, 키워드로 과거 이슈 검색...">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="news-section">
+                <div class="section-header">
+                    <h2 class="section-title" id="news-list-title">과거 이슈 목록</h2>
+                </div>
+                <div class="news-list" id="news-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="analysis-modal" class="modal-overlay"></div>
+
+    <script>
+        let allPastNews = [];
+        let searchTimeout;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPastNews();
+            setupEventListeners();
+        });
+
+        async function loadPastNews(searchTerm = '') {
+            const container = document.getElementById('news-container');
+            container.innerHTML = `<div class="loading"><div class="spinner"></div><p>과거 이슈 데이터를 DB에서 불러오는 중...</p></div>`;
+            
+            const apiUrl = `/api/database/past-issues?limit=100&search=${encodeURIComponent(searchTerm)}`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
+
+                const result = await response.json();
+                if (!Array.isArray(result)) throw new Error('데이터 형식이 올바르지 않습니다.');
+                
+                allPastNews = result;
+                displayNews(allPastNews);
+                
+                document.getElementById('page-subtitle').textContent = `총 ${allPastNews.length}개의 과거 이슈를 DB에서 불러왔습니다.`;
+
+            } catch (error) {
+                console.error('❌ 과거 뉴스 로드 실패:', error);
+                container.innerHTML = `<div class="loading"><p class="error-text">${error.message}</p></div>`;
+                showNotification('과거 이슈를 불러오는데 실패했습니다.', 'error');
+            }
+        }
+
+        function displayNews(news) {
+            const container = document.getElementById('news-container');
+            container.innerHTML = '';
+
+            if (news.length === 0) {
+                container.innerHTML = `<div class="loading"><p>해당 조건에 맞는 과거 이슈가 없습니다.</p></div>`;
+                return;
+            }
+            news.forEach(item => container.appendChild(createNewsListItem(item)));
+        }
+
+        function createNewsListItem(news) {
+            const item = document.createElement('div');
+            item.className = 'news-item';
+            
+            item.innerHTML = `
+                <div class="news-content">
+                    <div class="news-meta">
+                        <div class="news-date">${news.start_date || '날짜 미상'}</div>
+                        <div class="news-source">과거 이슈 DB</div>
+                        ${news.related_industries ? `<div class="impact-tag">${news.related_industries.split(',')[0].trim()}</div>` : ''}
+                    </div>
+                    <h3 class="news-title">${news.issue_name}</h3>
+                    <p class="news-summary">${(news.contents || '').substring(0, 150)}...</p>
+                    <div class="news-actions">
+                        <button class="action-btn btn-analyze" onclick="analyzeNews(event, '${news.id}')">🤖 AI 심층 분석</button>
+                    </div>
+                </div>
+            `;
+            return item;
+        }
+
+        function setupEventListeners() {
+            const searchInput = document.getElementById('news-search-input');
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    loadPastNews(e.target.value);
+                }, 500);
+            });
+        }
+
+        async function analyzeNews(event, newsId) {
+            event.stopPropagation();
+            const newsItem = allPastNews.find(n => n.id === newsId);
+            if (!newsItem) return;
+
+            const modal = document.getElementById('analysis-modal');
+            modal.style.display = 'flex';
+            modal.innerHTML = `<div class="modal-content loading"><div class="spinner"></div><p>RAG 분석을 요청하는 중...</p></div>`;
+            showNotification(`'${newsItem.issue_name}'에 대한 RAG 분석을 시작합니다.`, 'info');
+
+            try {
+                const response = await fetch('/api/analysis', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ content: newsItem.issue_name + "\n" + newsItem.contents })
+                });
+
+                if (!response.ok) throw new Error('분석 API 호출에 실패했습니다.');
+
+                const result = await response.json();
+                modal.innerHTML = createAnalysisModalContent(newsItem, result);
+
+            } catch (error) {
+                console.error('❌ RAG 분석 실패:', error);
+                modal.innerHTML = `<div class="modal-content"><p class="error-text">분석 중 오류 발생: ${error.message}</p><button class="btn" onclick="closeModal()">닫기</button></div>`;
+            }
+        }
+
+        function createAnalysisModalContent(originalNews, analysisResult) {
+            return `
+                <div class="modal-content">
+                    <button onclick="closeModal()" class="modal-close-btn">&times;</button>
+                    <h2 class="modal-title">RAG 심층 분석 결과</h2>
+                    <div class="modal-text-box" style="margin-bottom:1.5rem;"><strong>원본 이슈:</strong> ${originalNews.issue_name}</div>
+                    <div class="modal-section">
+                        <h3 class="modal-section-title green">💡 종합 분석 (신뢰도: ${(analysisResult.confidence || 0).toFixed(2)})</h3>
+                        <div class="modal-highlight-box green">${analysisResult.explanation.replace(/\n/g, '<br>')}</div>
+                    </div>
+                    <div class="modal-grid">
+                        <div class="modal-section">
+                            <h3 class="modal-section-title red">🏭 관련 산업</h3>
+                            <div class="modal-highlight-box red scrollable">${formatContextForModal(analysisResult.industries, '산업')}</div>
+                        </div>
+                        <div class="modal-section">
+                            <h3 class="modal-section-title blue">📚 유사 과거 이슈</h3>
+                            <div class="modal-highlight-box blue scrollable">${formatContextForModal(analysisResult.past_issues, '과거 이슈')}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function closeModal() {
+            document.getElementById('analysis-modal').style.display = 'none';
+        }
+
+        function formatContextForModal(items, type) {
+            if (!items || items.length === 0) return `<div class="modal-no-data">관련 ${type} 정보 없음</div>`;
+            return items.map(item => `
+                <div class="modal-list-item">
+                    <div class="modal-list-title">${item.industry_name || item.issue_name}</div>
+                    <p class="modal-list-desc">${(item.description || item.contents || '').substring(0, 150)}...</p>
+                </div>
+            `).join('');
+        }
+        
+        function navigateTo(page) {
+            const pages = {
+                'home': '/static/index.html', 'news': '/static/news.html', 
+                'sector': '/static/sector.html', 'company': '/static/company.html', 'mock-invest': '/static/mock-invest.html'
+            };
+            if (window.location.pathname !== pages[page]) {
+                window.location.href = pages[page];
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+             const colors = {
+                success: 'linear-gradient(135deg, #28a745, #218838)',
+                error: 'linear-gradient(135deg, #dc3545, #c82333)',
+                info: 'linear-gradient(135deg, #17a2b8, #138496)'
+            };
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.style.background = colors[type] || colors.info;
+            notification.innerHTML = `<span>${message}</span><button onclick="this.parentElement.remove()">&times;</button>`;
+            document.body.appendChild(notification);
+            setTimeout(() => { notification.remove(); }, 5000);
+        }
+    </script>
+</body>
+</html>

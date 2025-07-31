@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오르다 - 오늘의 이슈</title>
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/page.css">
+</head>
+<body>
+    <div class="layout">
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo">오르다</div>
+                <div class="logo-subtitle">투자 학습 플랫폼</div>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item active" onclick="navigateTo('home')"><span class="nav-icon">🏠</span><span>Home</span></div>
+                <div class="nav-item" onclick="navigateTo('news')"><span class="nav-icon">📰</span><span>News</span></div>
+                <div class="nav-item" onclick="navigateTo('sector')"><span class="nav-icon">🏭</span><span>Sector</span></div>
+                <div class="nav-item" onclick="navigateTo('company')"><span class="nav-icon">🏢</span><span>Company</span></div>
+                <div class="nav-item" onclick="navigateTo('mock-invest')"><span class="nav-icon">📈</span><span>Mock Invest</span></div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="page-header home-header">
+                <div class="welcome-text">투자 학습의 시작</div>
+                <h1 class="page-title">오늘의 이슈</h1>
+                <p class="page-subtitle">AI가 선별한 주식시장 관련 핵심 이슈들을<br>분석하여 투자 인사이트를 얻어보세요</p>
+                <div class="today-date" id="today-date"></div>
+            </div>
+            
+            <div class="status-bar">
+                <div class="status-info">
+                    <div class="status-item"><div class="status-indicator"></div><span>AI RAG 분석 활성화</span></div>
+                    <div class="status-item"><span>📅 마지막 업데이트: <span id="last-update-time"></span></span></div>
+                    <div class="status-item"><span>📊 AI 선별 <span id="issue-count">0</span>개 이슈</span></div>
+                </div>
+                <button id="refresh-issues-btn" class="btn btn-primary" style="padding: 0.5rem 1rem;">🔄 데이터 새로고침</button>
+            </div>
+            
+            <div class="issues-section">
+                <div class="section-header">
+                    <h2 class="section-title">🎯 AI 선별 주요 이슈 (<span id="grid-issue-count">0</span>개)</h2>
+                </div>
+                <div class="issues-grid" id="issues-grid"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="ai-analysis-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button onclick="closeAIAnalysisModal()" class="modal-close-btn">&times;</button>
+            <h2 id="modal-issue-title" class="modal-title"></h2>
+            <div id="modal-issue-score" class="modal-score-bar">
+                <strong>📊 주식시장 관련성 점수: <span id="score-value">N/A</span>/10</strong>
+                <span class="rag-confidence">🔍 RAG 분석 신뢰도: <span id="rag-confidence">N/A</span></span>
+            </div>
+            <div class="modal-section">
+                <h3 class="modal-section-title">📝 원본 이슈 내용</h3>
+                <div id="modal-issue-content" class="modal-text-box scrollable"></div>
+            </div>
+            <div class="modal-section">
+                <h3 class="modal-section-title green">💡 RAG 종합 분석</h3>
+                <div id="modal-rag-summary" class="modal-highlight-box green"></div>
+            </div>
+            <div class="modal-grid">
+                <div class="modal-section">
+                    <h3 class="modal-section-title red">🏭 관련 산업 분석</h3>
+                    <div id="modal-related-industries" class="modal-highlight-box red"></div>
+                </div>
+                <div class="modal-section">
+                    <h3 class="modal-section-title blue">📚 관련 과거 이슈</h3>
+                    <div id="modal-related-past-issues" class="modal-highlight-box blue"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <strong>분석 정보:</strong> 
+                <span>벡터 검색 + GPT-4o</span> | 
+                <span id="analysis-timestamp"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentIssues = [];
+        let isRefreshing = false;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateTodayDate();
+            loadCurrentIssues();
+            setupRefreshButton();
+        });
+
+        function updateTodayDate() {
+            const today = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+            document.getElementById('today-date').textContent = today.toLocaleDateString('ko-KR', options);
+            document.getElementById('last-update-time').textContent = today.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        async function loadCurrentIssues() {
+            const grid = document.getElementById('issues-grid');
+            grid.innerHTML = `<div class="loading"><div class="spinner"></div><p>최신 RAG 분석 데이터를 불러오는 중...</p></div>`;
+
+            try {
+                // [수정] API 엔드포인트 수정
+                const response = await fetch('/api/pipeline/today-issues');
+                if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
+                
+                const issues = await response.json();
+                if (!Array.isArray(issues) || issues.length === 0) {
+                  throw new Error("처리된 이슈 데이터가 없습니다. 새로고침을 시도해주세요.");
+                }
+                
+                currentIssues = issues;
+                displayIssues(currentIssues);
+                updateIssueCounts(currentIssues.length);
+                showNotification(`✅ ${currentIssues.length}개 최신 이슈 로드 완료!`, 'success');
+
+            } catch (error) {
+                console.error('❌ 이슈 로드 실패:', error);
+                grid.innerHTML = `<div class="loading"><p class="error-text">${error.message}</p><p>데이터 새로고침 버튼을 눌러주세요.</p></div>`;
+                showNotification('이슈를 불러오는 데 실패했습니다.', 'error');
+            }
+        }
+
+        function displayIssues(issues) {
+            const grid = document.getElementById('issues-grid');
+            grid.innerHTML = '';
+            issues.forEach((issue, index) => {
+                const card = document.createElement('div');
+                card.className = 'issue-card';
+                card.onclick = () => showAIAnalysisModal(index);
+                
+                // [수정] 데이터 필드 이름 확인 (백엔드 응답 기준)
+                const score = issue.종합점수 || 0; 
+                
+                card.innerHTML = `
+                    <div class="issue-header">
+                        <div class="issue-rank">TOP ${issue.rank || index + 1}</div>
+                        <div class="issue-score" style="background-color: ${getScoreColor(score)};">${score.toFixed(1)}</div>
+                    </div>
+                    <div class="issue-title">${issue.제목}</div>
+                    <div class="issue-summary">${issue.선별이유 || (issue.내용 ? issue.내용.substring(0, 100) + '...' : '')}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+        
+        function setupRefreshButton() {
+            const refreshBtn = document.getElementById('refresh-issues-btn');
+            refreshBtn.addEventListener('click', async () => {
+                if (isRefreshing) return;
+                
+                isRefreshing = true;
+                refreshBtn.disabled = true;
+                refreshBtn.innerHTML = '🔄 처리 중...';
+                showNotification('🚀 데이터 새로고침 파이프라인을 시작합니다. 3~5분 정도 소요될 수 있습니다.', 'info');
+                
+                try {
+                    // [수정] API 엔드포인트 수정
+                    const response = await fetch('/api/pipeline/refresh-issues', { method: 'POST' });
+                    if (!response.ok) throw new Error('파이프라인 시작에 실패했습니다.');
+
+                    const result = await response.json();
+                    showNotification(result.message, 'success');
+                    
+                    // 3분(180초) 후 새 데이터 로드 시도
+                    setTimeout(() => {
+                        showNotification('🔄 새로운 데이터를 불러옵니다...', 'info');
+                        loadCurrentIssues();
+                    }, 180000);
+
+                } catch (error) {
+                    console.error('❌ 새로고침 실패:', error);
+                    showNotification(error.message, 'error');
+                } finally {
+                    // 3분 후 버튼 활성화
+                    setTimeout(() => {
+                        isRefreshing = false;
+                        refreshBtn.disabled = false;
+                        refreshBtn.innerHTML = '🔄 데이터 새로고침';
+                    }, 180000);
+                }
+            });
+        }
+
+        function showAIAnalysisModal(issueIndex) {
+            const issue = currentIssues[issueIndex];
+            if (!issue) return;
+
+            document.getElementById('modal-issue-title').textContent = issue.제목;
+            document.getElementById('modal-issue-content').textContent = issue.내용 || '내용 없음';
+            document.getElementById('score-value').textContent = (issue.종합점수 || 0).toFixed(1);
+            document.getElementById('rag-confidence').textContent = (issue.confidence || 'N/A');
+            document.getElementById('modal-rag-summary').innerHTML = (issue.explanation || '종합 분석 정보가 없습니다.').replace(/\n/g, '<br>');
+            
+            document.getElementById('modal-related-industries').innerHTML = formatContextForModal(issue.industries, '산업');
+            document.getElementById('modal-related-past-issues').innerHTML = formatContextForModal(issue.past_issues, '과거 이슈');
+
+            document.getElementById('analysis-timestamp').textContent = `분석 시간: ${new Date(issue.추출시간 || Date.now()).toLocaleString('ko-KR')}`;
+            document.getElementById('ai-analysis-modal').style.display = 'flex';
+        }
+
+        function closeAIAnalysisModal() {
+            document.getElementById('ai-analysis-modal').style.display = 'none';
+        }
+
+        function formatContextForModal(items, type) {
+            if (!items || items.length === 0) {
+                return `<div class="modal-no-data">관련 ${type} 정보가 없습니다.</div>`;
+            }
+            // [수정] 백엔드에서 오는 데이터 필드명에 맞게 수정
+            return items.map((item, idx) => `
+                <div class="modal-list-item">
+                    <div class="modal-list-title">
+                        ${idx + 1}. ${item.industry_name || item.issue_name}
+                    </div>
+                    <div class="modal-list-desc">${(item.description || item.contents).substring(0, 150)}...</div>
+                </div>
+            `).join('');
+        }
+
+        function getScoreColor(score) {
+            if (score >= 8.5) return '#dc3545';
+            if (score >= 7.0) return '#ffc107';
+            return '#28a745';
+        }
+
+        function updateIssueCounts(count) {
+            document.getElementById('issue-count').textContent = count;
+            document.getElementById('grid-issue-count').textContent = count;
+        }
+
+        function navigateTo(page) {
+            const pages = {
+                'home': '/static/index.html',
+                'news': '/static/news.html', 
+                'sector': '/static/sector.html',
+                'company': '/static/company.html',
+                'mock-invest': '/static/mock-invest.html'
+            };
+            if (window.location.pathname !== pages[page]) {
+                window.location.href = pages[page];
+            }
+        }
+
+        function showNotification(message, type = 'info') {
+            const colors = {
+                success: 'linear-gradient(135deg, #28a745, #218838)',
+                error: 'linear-gradient(135deg, #dc3545, #c82333)',
+                info: 'linear-gradient(135deg, #17a2b8, #138496)'
+            };
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.style.background = colors[type] || colors.info;
+            notification.innerHTML = `<span>${message}</span><button onclick="this.parentElement.remove()">&times;</button>`;
+            document.body.appendChild(notification);
+            setTimeout(() => { notification.remove(); }, 5000);
+        }
+    </script>
+</body>
+</html>

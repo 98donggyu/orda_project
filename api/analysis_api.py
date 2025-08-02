@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import AnalysisRequest, FullAnalysisResponse
 from services import rag_service
 
+# router 정의 추가
 router = APIRouter()
 
 @router.post("/analysis", response_model=FullAnalysisResponse)

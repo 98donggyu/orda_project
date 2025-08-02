@@ -321,76 +321,86 @@ class BigKindsCrawler:
             return False
 
     def _crawl_issues_in_category(self, category: str, max_issues: int) -> List[Dict]:
-        """카테고리 내 이슈들 크롤링"""
         issues = []
-        
+        last_title = None
+
         for i in range(1, max_issues + 1):
             print(f"  📰 [{i}/{max_issues}] 이슈 처리 중...")
-            
+
             try:
-                # 3번째 이슈부터는 슬라이드 넘기기 필요
-                if i >= 3:
-                    self._navigate_slides(i)
-                
-                # 이슈 데이터 추출
+                if i > 1:
+                    self._navigate_slides(i, prev_title=last_title)
+
                 issue_data = self._extract_issue_data(i, category)
                 print(f"📌 DEBUG: crawling_results keys: {list(self.crawling_results.keys())}")
+
                 if issue_data:
+                    if issue_data["제목"] == last_title:
+                        print(f"    ⚠️ 중복 이슈 감지: {issue_data['제목'][:30]}... → 스킵")
+                        continue
+
                     issues.append(issue_data)
+                    last_title = issue_data["제목"]
                     print(f"    ✅ 이슈 {i} 추출 완료: {issue_data['제목'][:30]}...")
-                
-                # 팝업 닫기 및 위치 복원
+
                 self._close_popup_and_restore()
-                
-                # 이슈 간 짧은 대기
                 time.sleep(1)
-                
+
             except Exception as e:
                 print(f"    ❌ 이슈 {i} 처리 실패: {e}")
-                # 개별 이슈 실패해도 다음 이슈 계속 진행
                 continue
-        
+
         return issues
 
-    def _navigate_slides(self, issue_num: int):
-        """슬라이드 넘기기 (3번째 이슈부터 필요)"""
-        slides_to_move = issue_num - 3
-        
-        for slide in range(slides_to_move):
-            try:
-                next_btn = self.driver.find_element(
-                    By.CSS_SELECTOR, 
-                    'div.swiper-button-next.section2-btn.st2-sw1-next'
-                )
-                
-                # 버튼이 비활성화되었는지 확인
-                is_disabled = next_btn.get_attribute('aria-disabled') == 'true'
-                if is_disabled:
-                    print(f"    ⚠️ 슬라이드 끝에 도달 (이슈 {issue_num})")
-                    break
-                
-                self.driver.execute_script("arguments[0].click();", next_btn)
-                time.sleep(1)
-                
-            except Exception as e:
-                print(f"    ⚠️ 슬라이드 넘기기 실패 (이슈 {issue_num}): {e}")
-                break
+    def _navigate_slides(self, issue_num: int, prev_title: Optional[str] = None):
+        """
+        슬라이드 넘기기 - 이슈 번호에 상관없이 항상 slide 이동 시도
+        """
+        try:
+            next_btn = self.driver.find_element(
+                By.CSS_SELECTOR,
+                'div.swiper-button-next.section2-btn.st2-sw1-next'
+            )
+
+            is_disabled = next_btn.get_attribute('aria-disabled') == 'true'
+            if is_disabled:
+                print(f"    ⚠️ 슬라이드 끝에 도달 (이슈 {issue_num})")
+                return
+
+            current_titles = self.driver.find_elements(By.CSS_SELECTOR, '.swiper-slide-active .issue-title')
+            current_text = current_titles[0].text.strip() if current_titles else ""
+
+            self.driver.execute_script("arguments[0].click();", next_btn)
+
+            # 타이틀이 변할 때까지 대기
+            self.wait.until(
+                lambda d: d.find_elements(By.CSS_SELECTOR, '.swiper-slide-active .issue-title')
+                and d.find_elements(By.CSS_SELECTOR, '.swiper-slide-active .issue-title')[0].text.strip() != current_text
+            )
+
+            time.sleep(0.5)
+
+        except Exception as e:
+            print(f"    ⚠️ 슬라이드 넘기기 실패 (이슈 {issue_num}): {e}")
 
     def _extract_issue_data(self, issue_num: int, category: str) -> Optional[Dict]:
-        """개별 이슈 데이터 추출"""
+        """개별 이슈 데이터 추출 - 안정성 개선 버전"""
         try:
-            # 이슈 클릭
-            issue_selector = f'div.swiper-slide:nth-child({issue_num}) .issue-item-link'
-            issue_element = self.wait.until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, issue_selector))
-            )
+            # 현재 보여지는 이슈 링크 요소 찾기
+            issue_elements = self.driver.find_elements(By.CSS_SELECTOR, '.swiper-slide-active .issue-item-link')
+
+            if not issue_elements:
+                print(f"    ❌ 이슈 {issue_num} - swiper-slide-active 내 요소 없음")
+                return None
+
+            # 현재 보여지는 슬라이드들 중 첫 번째 요소 선택
+            issue_element = issue_elements[0]
             
-            # 요소가 보이도록 스크롤 후 클릭
             self.driver.execute_script("arguments[0].scrollIntoView(true);", issue_element)
-            time.sleep(0.5)
+            time.sleep(0.3)
             self.driver.execute_script("arguments[0].click();", issue_element)
-            
-            # 팝업 내용 추출
+
+            # 팝업 데이터 추출 대기
             title_elem = self.wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'p.issuPopTitle'))
             )
@@ -400,26 +410,25 @@ class BigKindsCrawler:
 
             title = title_elem.text.strip()
             content = content_elem.text.strip()
-            
-            # 유니크 ID 생성 (카테고리 + 순서)
+
             unique_id = f"{category}_{issue_num}"
 
             return {
-                "이슈번호": len(self.crawling_results["all_issues"]) + 1,  # 전체 순서
-                "카테고리별_번호": issue_num,  # 카테고리 내 순서
+                "이슈번호": len(self.crawling_results["all_issues"]) + 1,
+                "카테고리별_번호": issue_num,
                 "카테고리": category,
                 "제목": title,
                 "내용": content,
                 "추출시간": datetime.now().isoformat(),
                 "고유ID": unique_id
             }
-            
+
         except Exception as e:
             print(f"    ❌ 이슈 {issue_num} 데이터 추출 실패: {e}")
             print(f"   ↳ 예외 타입: {type(e).__name__}")
             print(f"   ↳ 메시지: {str(e)}")
-            traceback.print_exc()
             return None
+
 
     def _close_popup_and_restore(self):
         """팝업 닫기 및 스크롤 위치 복원"""

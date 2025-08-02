@@ -15,7 +15,6 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
-# 원본 BigKindsCrawler 그대로 import (같은 폴더에서)
 from .crawling_bigkinds import BigKindsCrawler
 
 class CrawlingService:
@@ -34,8 +33,8 @@ class CrawlingService:
         print("✅ 크롤링 서비스 초기화 완료")
     
     def crawl_and_filter_news(self, 
-                             issues_per_category: int = 10,
-                             target_filtered_count: int = 5) -> Dict:
+                                issues_per_category: int = 10,
+                                target_filtered_count: int = 5) -> Dict:
         """원본 BigKindsCrawler 사용 + 필터링"""
         
         print(f"🕷️ BigKinds 크롤링 시작: 카테고리별 {issues_per_category}개씩")
@@ -124,16 +123,22 @@ class CrawlingService:
         """AI를 사용한 주식시장 관련성 분석"""
         
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """너는 뉴스가 주식시장에 미칠 영향을 분석하는 전문가야.
-다음 기준으로 뉴스의 주식시장 관련성을 1-10점으로 평가해줘:
+        ("system", """너는 한국 주식시장 전문 애널리스트야. 
+주어진 뉴스 이슈들을 분석하여 주식시장에 가장 큰 영향을 미칠 것으로 예상되는 이슈들을 선별해야 해.
 
-1. 직접적 기업 영향 (기업실적, 경영진 변화 등)
-2. 산업 전반 영향 (정책변화, 기술혁신 등) 
-3. 거시경제 영향 (금리, 환율, 정책 등)
-4. 투자심리 영향 (시장 트렌드, 이슈 확산성 등)
+📊 평가 기준 (각 1-10점):
+1. **직접적 기업 영향**: 특정 기업이나 산업의 실적에 직접적인 영향을 미치는가?
+2. **정책적 영향**: 금리, 세금, 규제 변화 등 시장 전반에 영향을 미치는 정책인가?
+3. **시장 심리**: 투자자 신뢰도, 리스크 인식, 투자 심리에 미치는 영향은?
+4. **거시경제**: GDP, 인플레이션, 환율 등 거시경제 지표에 미치는 영향은?
+5. **산업 트렌드**: 새로운 기술이나 소비 패턴 변화로 인한 산업 영향은?
 
-각 기준별 점수와 종합점수를 제시해줘."""),
-            ("human", """
+💡 우선순위:
+- 단기적 주가 변동을 일으킬 가능성이 높은 이슈
+- 특정 업종이나 테마주에 영향을 미치는 이슈
+- 외국인 투자나 기관 투자에 영향을 미치는 이슈
+- 정부 정책이나 규제 변화 관련 이슈"""),
+        ("human", """
 [뉴스 제목]
 {title}
 
@@ -144,42 +149,50 @@ class CrawlingService:
 
 출력 형식 (JSON):
 {{
-  "직접적_기업영향": 점수,
-  "산업_전반영향": 점수, 
-  "거시경제_영향": 점수,
-  "투자심리_영향": 점수,
-  "종합점수": 점수,
-  "분석근거": "상세 분석 내용"
+    "직접적_기업영향": 점수,
+    "정책적_영향": 점수,
+    "시장_심리_영향": 점수,
+    "거시경제_영향": 점수,
+    "산업_트렌드_영향": 점수,
+    "종합점수": 점수,
+    "주된영향분야": ["섹터1", "섹터2"],
+    "예상영향방향": "긍정적/부정적/중립적",
+    "영향시기": "즉시/단기/중기",
+    "분석근거": "상세 분석 내용",
+    "예상시장반응": "예상되는 시장 반응 설명"
 }}""")
-        ])
-        
+    ])
+    
         parser = JsonOutputParser()
         chain = prompt | self.llm | parser
         
         try:
             result = chain.invoke({
                 "title": issue.get("제목", ""),
-                "content": issue.get("내용", "")  # 원본에서는 "내용" 필드 사용
+                "content": issue.get("내용", "")
             })
             
             return {
                 "직접적_기업영향": result.get("직접적_기업영향", 5),
-                "산업_전반영향": result.get("산업_전반영향", 5),
-                "거시경제_영향": result.get("거시경제_영향", 5), 
-                "투자심리_영향": result.get("투자심리_영향", 5),
+                "정책적_영향": result.get("정책적_영향", 5),
+                "시장_심리_영향": result.get("시장_심리_영향", 5),
+                "거시경제_영향": result.get("거시경제_영향", 5),
+                "산업_트렌드_영향": result.get("산업_트렌드_영향", 5),
                 "종합점수": result.get("종합점수", 5),
-                "분석근거": result.get("분석근거", "AI 분석 완료")
+                "주된영향분야": result.get("주된영향분야", []),
+                "예상영향방향": result.get("예상영향방향", "중립적"),
+                "영향시기": result.get("영향시기", "단기"),
+                "분석근거": result.get("분석근거", "AI 분석 완료"),
+                "예상시장반응": result.get("예상시장반응", "")
             }
             
         except Exception as e:
             print(f"❌ AI 분석 실패: {e}")
             return {
-                "직접적_기업영향": 5,
-                "산업_전반영향": 5,
-                "거시경제_영향": 5,
-                "투자심리_영향": 5,
-                "종합점수": 5,
-                "분석근거": f"AI 분석 실패: {e}"
+                "직접적_기업영향": 5, "정책적_영향": 5, "시장_심리_영향": 5,
+                "거시경제_영향": 5, "산업_트렌드_영향": 5, "종합점수": 5,
+                "주된영향분야": [], "예상영향방향": "중립적", "영향시기": "단기",
+                "분석근거": f"AI 분석 실패: {e}", "예상시장반응": ""
             }
     
     def _save_filtering_result(self, result: Dict):

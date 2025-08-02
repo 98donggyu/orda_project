@@ -1,9 +1,11 @@
+# api/health_api.py
 from fastapi import APIRouter
 from datetime import datetime
 from typing import Dict
 
-from services.database_service import DatabaseService
+from services.database_service import get_database_service
 
+# 누락된 router 정의 추가
 router = APIRouter()
 
 @router.get("/health")
@@ -14,8 +16,8 @@ async def health_check():
     
     # 데이터베이스 상태 확인
     try:
-        db_service = DatabaseService()
-        await db_service.test_connection()
+        db_service = get_database_service()
+        db_service.test_connection()  # await 제거 (동기 함수)
         components["mysql_database"] = {
             "status": "ok",
             "message": "MySQL 연결 정상"
@@ -28,8 +30,8 @@ async def health_check():
     
     # 백그라운드 파이프라인 상태 확인
     try:
-        db_service = DatabaseService()
-        latest_log = await db_service.get_latest_pipeline_log()
+        db_service = get_database_service()
+        latest_log = db_service.get_latest_pipeline_log()  # await 제거
         
         if latest_log and latest_log.get("final_status") == "success":
             components["background_pipeline"] = {

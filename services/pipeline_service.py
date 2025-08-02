@@ -24,8 +24,8 @@ class PipelineService:
         print("✅ 파이프라인 서비스 초기화 완료")
     
     def execute_full_pipeline(self, 
-                             issues_per_category: int = 10,
-                             target_filtered_count: int = 5) -> Dict:
+                            issues_per_category: int = 10,
+                            target_filtered_count: int = 5) -> Dict:
         """전체 파이프라인 실행: 크롤링 → 필터링 → RAG 분석"""
         
         pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")

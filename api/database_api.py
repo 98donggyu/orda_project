@@ -5,6 +5,7 @@ from typing import Optional, List
 from services import database_service
 from models.schemas import PastIssue, Industry, DatabaseStats
 
+# router 정의 추가
 router = APIRouter()
 
 @router.get("/past-issues", response_model=List[PastIssue])
@@ -28,7 +29,6 @@ async def get_industries(search: Optional[str] = None, limit: int = 50):
         return await database_service.db_api.get_industries(search, limit)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/stats", response_model=DatabaseStats)
 async def get_db_stats():

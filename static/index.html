@@ -77,7 +77,7 @@
             </div>
             <div class="modal-footer">
                 <strong>분석 정보:</strong> 
-                <span>벡터 검색 + GPT-4o</span> | 
+                <span>벡터 검색 + GPT-4o-mini</span> | 
                 <span id="analysis-timestamp"></span>
             </div>
         </div>
@@ -105,19 +105,24 @@
             grid.innerHTML = `<div class="loading"><div class="spinner"></div><p>최신 RAG 분석 데이터를 불러오는 중...</p></div>`;
 
             try {
-                // [수정] API 엔드포인트 수정
-                const response = await fetch('/api/pipeline/today-issues');
+                // ✅ 수정: 새로운 API 엔드포인트 사용
+                const response = await fetch('/api/news/latest');
                 if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
                 
-                const issues = await response.json();
-                if (!Array.isArray(issues) || issues.length === 0) {
-                  throw new Error("처리된 이슈 데이터가 없습니다. 새로고침을 시도해주세요.");
+                const result = await response.json();
+                
+                // ✅ 수정: 응답 구조에 맞게 데이터 추출
+                if (!result.success || !result.data.issues) {
+                    throw new Error("처리된 이슈 데이터가 없습니다. 새로고침을 시도해주세요.");
                 }
                 
-                currentIssues = issues;
+                currentIssues = result.data.issues;
                 displayIssues(currentIssues);
                 updateIssueCounts(currentIssues.length);
-                showNotification(`✅ ${currentIssues.length}개 최신 이슈 로드 완료!`, 'success');
+                
+                // ✅ 수정: 데이터 소스 표시
+                const source = result.data.source || '데이터베이스';
+                showNotification(`✅ ${currentIssues.length}개 최신 이슈 로드 완료! (출처: ${source})`, 'success');
 
             } catch (error) {
                 console.error('❌ 이슈 로드 실패:', error);
@@ -134,16 +139,21 @@
                 card.className = 'issue-card';
                 card.onclick = () => showAIAnalysisModal(index);
                 
-                // [수정] 데이터 필드 이름 확인 (백엔드 응답 기준)
-                const score = issue.종합점수 || 0; 
+                // ✅ 수정: MySQL 데이터 구조에 맞게 필드명 수정
+                const score = issue.stock_relevance_score || issue.주식시장_관련성_점수 || 0;
+                const rank = issue.ranking || issue.rank || (index + 1);
                 
                 card.innerHTML = `
                     <div class="issue-header">
-                        <div class="issue-rank">TOP ${issue.rank || index + 1}</div>
+                        <div class="issue-rank">TOP ${rank}</div>
                         <div class="issue-score" style="background-color: ${getScoreColor(score)};">${score.toFixed(1)}</div>
                     </div>
-                    <div class="issue-title">${issue.제목}</div>
-                    <div class="issue-summary">${issue.선별이유 || (issue.내용 ? issue.내용.substring(0, 100) + '...' : '')}</div>
+                    <div class="issue-title">${issue.title || issue.제목}</div>
+                    <div class="issue-summary">${
+                        issue.분석근거 || 
+                        (issue.content ? issue.content.substring(0, 100) + '...' : '') ||
+                        (issue.내용 ? issue.내용.substring(0, 100) + '...' : '')
+                    }</div>
                 `;
                 grid.appendChild(card);
             });
@@ -157,21 +167,25 @@
                 isRefreshing = true;
                 refreshBtn.disabled = true;
                 refreshBtn.innerHTML = '🔄 처리 중...';
-                showNotification('🚀 데이터 새로고침 파이프라인을 시작합니다. 3~5분 정도 소요될 수 있습니다.', 'info');
+                showNotification('🚀 백그라운드 파이프라인을 수동으로 시작합니다. 3~5분 정도 소요될 수 있습니다.', 'info');
                 
                 try {
-                    // [수정] API 엔드포인트 수정
-                    const response = await fetch('/api/pipeline/refresh-issues', { method: 'POST' });
+                    // ✅ 수정: 새로운 API 엔드포인트 사용
+                    const response = await fetch('/api/pipeline/trigger', { method: 'POST' });
                     if (!response.ok) throw new Error('파이프라인 시작에 실패했습니다.');
 
                     const result = await response.json();
-                    showNotification(result.message, 'success');
-                    
-                    // 3분(180초) 후 새 데이터 로드 시도
-                    setTimeout(() => {
-                        showNotification('🔄 새로운 데이터를 불러옵니다...', 'info');
-                        loadCurrentIssues();
-                    }, 180000);
+                    if (result.success) {
+                        showNotification(result.message, 'success');
+                        
+                        // 3분(180초) 후 새 데이터 로드 시도
+                        setTimeout(() => {
+                            showNotification('🔄 새로운 데이터를 불러옵니다...', 'info');
+                            loadCurrentIssues();
+                        }, 180000);
+                    } else {
+                        throw new Error(result.message || '파이프라인 시작에 실패했습니다.');
+                    }
 
                 } catch (error) {
                     console.error('❌ 새로고침 실패:', error);
@@ -191,16 +205,34 @@
             const issue = currentIssues[issueIndex];
             if (!issue) return;
 
-            document.getElementById('modal-issue-title').textContent = issue.제목;
-            document.getElementById('modal-issue-content').textContent = issue.내용 || '내용 없음';
-            document.getElementById('score-value').textContent = (issue.종합점수 || 0).toFixed(1);
-            document.getElementById('rag-confidence').textContent = (issue.confidence || 'N/A');
-            document.getElementById('modal-rag-summary').innerHTML = (issue.explanation || '종합 분석 정보가 없습니다.').replace(/\n/g, '<br>');
+            // ✅ 수정: MySQL 데이터 구조에 맞게 필드명 수정
+            document.getElementById('modal-issue-title').textContent = issue.title || issue.제목;
+            document.getElementById('modal-issue-content').textContent = issue.content || issue.내용 || '내용 없음';
             
-            document.getElementById('modal-related-industries').innerHTML = formatContextForModal(issue.industries, '산업');
-            document.getElementById('modal-related-past-issues').innerHTML = formatContextForModal(issue.past_issues, '과거 이슈');
+            const score = issue.stock_relevance_score || issue.주식시장_관련성_점수 || 0;
+            const ragConfidence = issue.rag_confidence || issue.RAG분석신뢰도 || 'N/A';
+            
+            document.getElementById('score-value').textContent = score.toFixed(1);
+            document.getElementById('rag-confidence').textContent = ragConfidence;
+            
+            // RAG 종합 분석 (현재는 기본 메시지, 추후 백엔드에서 추가)
+            const explanation = issue.explanation || issue.분석결과 || 
+                `이 이슈는 주식시장 관련성 점수 ${score.toFixed(1)}점으로 선별되었습니다. AI 분석을 통해 관련 산업과 과거 이슈를 매칭하여 투자 인사이트를 제공합니다.`;
+            
+            document.getElementById('modal-rag-summary').innerHTML = explanation.replace(/\n/g, '<br>');
+            
+            // ✅ 수정: MySQL의 related_industries와 related_past_issues 구조에 맞게 수정
+            document.getElementById('modal-related-industries').innerHTML = formatContextForModal(
+                issue.related_industries || issue.관련산업 || [], '산업'
+            );
+            document.getElementById('modal-related-past-issues').innerHTML = formatContextForModal(
+                issue.related_past_issues || issue.관련과거이슈 || [], '과거 이슈'
+            );
 
-            document.getElementById('analysis-timestamp').textContent = `분석 시간: ${new Date(issue.추출시간 || Date.now()).toLocaleString('ko-KR')}`;
+            const timestamp = issue.extracted_at || issue.추출시간 || issue.updated_at || Date.now();
+            document.getElementById('analysis-timestamp').textContent = 
+                `분석 시간: ${new Date(timestamp).toLocaleString('ko-KR')}`;
+            
             document.getElementById('ai-analysis-modal').style.display = 'flex';
         }
 
@@ -212,15 +244,22 @@
             if (!items || items.length === 0) {
                 return `<div class="modal-no-data">관련 ${type} 정보가 없습니다.</div>`;
             }
-            // [수정] 백엔드에서 오는 데이터 필드명에 맞게 수정
-            return items.map((item, idx) => `
-                <div class="modal-list-item">
-                    <div class="modal-list-title">
-                        ${idx + 1}. ${item.industry_name || item.issue_name}
+            
+            // ✅ 수정: MySQL 데이터 구조에 맞게 필드명 수정
+            return items.map((item, idx) => {
+                const title = item.industry_name || item.issue_name || item.name || '이름 없음';
+                const description = item.description || item.ai_reason || item.reason || '설명 없음';
+                const score = item.final_score ? ` (점수: ${item.final_score})` : '';
+                
+                return `
+                    <div class="modal-list-item">
+                        <div class="modal-list-title">
+                            ${idx + 1}. ${title}${score}
+                        </div>
+                        <div class="modal-list-desc">${description.substring(0, 150)}...</div>
                     </div>
-                    <div class="modal-list-desc">${(item.description || item.contents).substring(0, 150)}...</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
 
         function getScoreColor(score) {

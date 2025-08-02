@@ -1,4 +1,4 @@
-# models/schemas.py
+# models/schemas.py (누락된 모델들 추가)
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Literal
 
@@ -12,6 +12,31 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded", "error"]
     timestamp: str
     components: Dict[str, ComponentHealth]
+
+# --- News Schemas (추가) ---
+class NewsIssue(BaseModel):
+    """뉴스 이슈 모델"""
+    id: Optional[int] = None
+    issue_number: Optional[int] = None
+    title: str
+    content: Optional[str] = None
+    category: Optional[str] = None
+    extracted_at: Optional[str] = None
+    stock_relevance_score: Optional[float] = None
+    ranking: Optional[int] = None
+    rag_confidence: Optional[float] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    
+    # RAG 분석 결과
+    related_industries: Optional[List[Dict]] = None
+    related_past_issues: Optional[List[Dict]] = None
+
+class NewsListResponse(BaseModel):
+    """뉴스 목록 응답 모델"""
+    success: bool
+    data: Dict[str, Any]
+    message: Optional[str] = None
 
 # --- Analysis Schemas ---
 class AnalysisRequest(BaseModel):
@@ -101,3 +126,32 @@ class ValidationResponse(BaseModel):
     valid: bool
     errors: List[str]
     warnings: List[str]
+
+# --- 상세 분석을 위한 새로운 스키마들 (추가) ---
+class DetailedSectorAnalysis(BaseModel):
+    섹터명: str
+    영향도: str  # "높음", "중간", "낮음"
+    방향: str   # "긍정적", "부정적", "중립적"
+
+class DetailedIssueAnalysis(BaseModel):
+    rank: int
+    제목: str
+    핵심영향요인: List[str]
+    영향섹터: List[DetailedSectorAnalysis]
+    관련종목예시: List[str]
+    과거유사사례: str
+    투자전략: str
+    리스크요인: List[str]
+    신뢰도: float
+
+class MarketOutlook(BaseModel):
+    overall_sentiment: str
+    key_themes: List[str]
+    attention_sectors: List[str]
+    risk_factors: List[str]
+
+class EnhancedAnalysisResponse(BaseModel):
+    selected_issues: List[Dict]
+    detailed_analysis: List[DetailedIssueAnalysis]
+    market_outlook: MarketOutlook
+    filter_metadata: Dict

@@ -1,164 +1,203 @@
-# services/crawling_service.py
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-import time
-from datetime import datetime
-from typing import List, Dict, Optional
+# services/crawling_service.py (수정된 버전 - 원본 코드 그대로 사용)
+"""
+크롤링 및 필터링 통합 서비스
+원본 BigKindsCrawler를 그대로 사용하고 필터링만 추가
+"""
 
-# config.py가 프로젝트 루트에 있다고 가정
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import CRAWLING_TARGET_CATEGORIES, CRAWLING_ISSUES_PER_CATEGORY
+import json
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
+from datetime import datetime
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 
-class BigKindsCrawler:
-    """BigKinds 웹사이트에서 최신 뉴스를 크롤링하는 서비스"""
+# 원본 BigKindsCrawler 그대로 import (같은 폴더에서)
+from .crawling_bigkinds import BigKindsCrawler
 
-    def __init__(self, headless: bool = True):
-        self.target_categories = CRAWLING_TARGET_CATEGORIES
-        self.issues_per_category = CRAWLING_ISSUES_PER_CATEGORY
+class CrawlingService:
+    """크롤링 및 필터링 통합 서비스 - 원본 BigKindsCrawler 사용"""
+    
+    def __init__(self, data_dir: str = "data2", headless: bool = True):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(exist_ok=True)
         self.headless = headless
-        self.driver = None
-        self.wait = None
-
-    def _setup_driver(self):
-        """Selenium WebDriver 설정"""
-        options = webdriver.ChromeOptions()
-        if self.headless:
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
         
-        options.add_argument("--disable-blink-features=AutomationControlled")
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
+        load_dotenv(override=True)
         
-        try:
-            self.driver = webdriver.Chrome(options=options)
-            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            self.wait = WebDriverWait(self.driver, 15)
-            print("✅ WebDriver가 성공적으로 설정되었습니다.")
-        except Exception as e:
-            print(f"❌ WebDriver 설정 중 오류 발생: {e}")
-            raise
-
-    def _cleanup_driver(self):
-        """WebDriver 종료"""
-        if self.driver:
-            self.driver.quit()
-            self.driver = None
-            self.wait = None
-            print("✅ WebDriver가 종료되었습니다.")
-
-    def crawl_all_categories(self) -> List[Dict]:
-        """모든 대상 카테고리의 뉴스를 크롤링"""
-        print(f"🚀 BigKinds 뉴스 크롤링을 시작합니다. (대상: {', '.join(self.target_categories)})")
-        self._setup_driver()
-        all_issues = []
+        # AI 필터링용 LLM 초기화
+        self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         
-        try:
-            self.driver.get("https://www.bigkinds.or.kr/")
-            print("🌐 BigKinds 웹사이트에 접속했습니다.")
-            time.sleep(3)
-            
-            total_issue_id = 1
-            for category in self.target_categories:
-                print(f"📂 '{category}' 카테고리 크롤링 중...")
-                try:
-                    self.driver.execute_script("window.scrollTo(0, 880);")
-                    time.sleep(1)
-
-                    cat_button_selector = f'a.issue-category[data-category="{category}"]'
-                    cat_button = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, cat_button_selector)))
-                    self.driver.execute_script("arguments[0].click();", cat_button)
-                    time.sleep(4)
-
-                    count = 0
-                    for i in range(1, self.issues_per_category + 1):
-                        try:
-                            issue_selector = f'div.swiper-slide:nth-child({i}) .issue-item-link'
-                            issue_element = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, issue_selector)))
-                            
-                            self.driver.execute_script("arguments[0].click();", issue_element)
-                            time.sleep(2)
-
-                            title_elem = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'p.issuPopTitle')))
-                            content_elem = self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'p.pT20.issuPopContent')))
-                            
-                            title = title_elem.text.strip()
-                            content = content_elem.text.strip()
-
-                            all_issues.append({
-                                "이슈번호": total_issue_id,
-                                "카테고리": category,
-                                "제목": title,
-                                "내용": content,
-                                "추출시간": datetime.now().isoformat(),
-                                "고유ID": f"{category}_{total_issue_id}"
-                            })
-                            total_issue_id += 1
-                            count += 1
-                            
-                            ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-                            time.sleep(1)
-
-                            if count >= self.issues_per_category:
-                                break
-                        
-                        except (TimeoutException, NoSuchElementException) as e:
-                            print(f"    - 이슈 {i} 처리 실패: {e}")
-                            try:
-                                ActionChains(self.driver).send_keys(Keys.ESCAPE).perform()
-                            except:
-                                pass
-                            continue
-                    print(f"  -> '{category}' 카테고리에서 {count}개 이슈 수집 완료.")
-
-                except (TimeoutException, NoSuchElementException) as e:
-                    print(f"❌ '{category}' 카테고리 처리 중 심각한 오류 발생: {e}")
-                    continue
-        
-        finally:
-            self._cleanup_driver()
-            print(f"✅ 크롤링 완료. 총 {len(all_issues)}개의 이슈를 수집했습니다.")
-        
-        return all_issues
-
-# --- Service Singleton ---
-_crawler_instance = BigKindsCrawler()
-
-def crawl_news() -> List[Dict]:
-    """뉴스 크롤링 실행 함수"""
-    return _crawler_instance.crawl_all_categories()
-
-def get_health() -> dict:
-    return {"name": "crawling_service", "status": "ok"}
-
-
-# --- 테스트 실행 코드 ---
-if __name__ == '__main__':
-    print("... crawling_service.py 직접 실행 테스트 ...")
+        print("✅ 크롤링 서비스 초기화 완료")
     
-    # headless=False로 설정하여 브라우저 창을 직접 보면서 테스트합니다.
-    test_crawler = BigKindsCrawler(headless=False) 
-    
-    try:
-        crawled_data = test_crawler.crawl_all_categories()
+    def crawl_and_filter_news(self, 
+                             issues_per_category: int = 10,
+                             target_filtered_count: int = 5) -> Dict:
+        """원본 BigKindsCrawler 사용 + 필터링"""
         
-        if crawled_data:
-            print("\n--- 📊 크롤링 결과 (상위 3개) ---")
-            for i, issue in enumerate(crawled_data[:3]):
-                print(f"  {i+1}. [{issue['카테고리']}] {issue['제목'][:50]}...")
-            print(f"\n✅ 총 {len(crawled_data)}개의 이슈를 성공적으로 크롤링했습니다.")
+        print(f"🕷️ BigKinds 크롤링 시작: 카테고리별 {issues_per_category}개씩")
+        
+        # Step 1: 원본 BigKindsCrawler로 크롤링
+        crawler = BigKindsCrawler(
+            data_dir=str(self.data_dir),
+            headless=self.headless,
+            issues_per_category=issues_per_category
+        )
+        
+        # 원본 메서드 그대로 호출
+        crawling_result = crawler.crawl_all_categories()
+        
+        print(f"✅ 크롤링 완료: {crawling_result.get('total_issues', 0)}개 이슈")
+        
+        # Step 2: 필터링
+        all_issues = crawling_result.get("all_issues", [])
+        if all_issues:
+            filtering_result = self._filter_by_stock_relevance(all_issues, target_filtered_count)
         else:
-            print("\n⚠️ 크롤링된 데이터가 없습니다. 사이트 구조 변경이나 네트워크 문제를 확인하세요.")
+            filtering_result = {
+                "selected_issues": [],
+                "filter_metadata": {
+                    "filtering_method": "no_issues_to_filter",
+                    "original_count": 0,
+                    "selected_count": 0,
+                    "filtered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+            }
+        
+        return {
+            **crawling_result,
+            "filtered_issues": filtering_result["selected_issues"],
+            "filter_metadata": filtering_result["filter_metadata"]
+        }
+    
+    def _filter_by_stock_relevance(self, all_issues: List[Dict], target_count: int) -> Dict:
+        """주식시장 관련성 기반 필터링"""
+        
+        print(f"🤖 AI 필터링 시작: {len(all_issues)}개 → {target_count}개 선별")
+        
+        # 각 이슈별로 주식시장 관련성 점수 계산
+        scored_issues = []
+        
+        for i, issue in enumerate(all_issues, 1):
+            print(f"🔄 이슈 {i}/{len(all_issues)} 분석 중: {issue.get('제목', 'N/A')[:30]}...")
+            
+            # AI로 주식시장 관련성 분석
+            relevance_score = self._analyze_stock_market_relevance(issue)
+            
+            scored_issue = issue.copy()
+            scored_issue.update({
+                "주식시장_관련성_점수": relevance_score["종합점수"],
+                "관련성_분석": relevance_score
+            })
+            
+            scored_issues.append(scored_issue)
+        
+        # 점수순 정렬 및 상위 선별
+        scored_issues.sort(key=lambda x: x["주식시장_관련성_점수"], reverse=True)
+        selected_issues = scored_issues[:target_count]
+        
+        # 순위 부여
+        for rank, issue in enumerate(selected_issues, 1):
+            issue["rank"] = rank
+        
+        result = {
+            "selected_issues": selected_issues,
+            "filter_metadata": {
+                "filtering_method": "gpt-4o-mini_stock_relevance",
+                "original_count": len(all_issues),
+                "selected_count": len(selected_issues),
+                "average_score": sum(issue["주식시장_관련성_점수"] for issue in selected_issues) / len(selected_issues) if selected_issues else 0,
+                "filtered_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        }
+        
+        # 필터링 결과 저장
+        self._save_filtering_result(result)
+        
+        print(f"✅ AI 필터링 완료: 상위 {len(selected_issues)}개 선별")
+        return result
+    
+    def _analyze_stock_market_relevance(self, issue: Dict) -> Dict:
+        """AI를 사용한 주식시장 관련성 분석"""
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """너는 뉴스가 주식시장에 미칠 영향을 분석하는 전문가야.
+다음 기준으로 뉴스의 주식시장 관련성을 1-10점으로 평가해줘:
 
-    except Exception as e:
-        import traceback
-        print(f"\n❌ 테스트 중 심각한 오류 발생: {e}")
-        traceback.print_exc()
+1. 직접적 기업 영향 (기업실적, 경영진 변화 등)
+2. 산업 전반 영향 (정책변화, 기술혁신 등) 
+3. 거시경제 영향 (금리, 환율, 정책 등)
+4. 투자심리 영향 (시장 트렌드, 이슈 확산성 등)
+
+각 기준별 점수와 종합점수를 제시해줘."""),
+            ("human", """
+[뉴스 제목]
+{title}
+
+[뉴스 내용]  
+{content}
+
+위 뉴스의 주식시장 관련성을 분석해주세요.
+
+출력 형식 (JSON):
+{{
+  "직접적_기업영향": 점수,
+  "산업_전반영향": 점수, 
+  "거시경제_영향": 점수,
+  "투자심리_영향": 점수,
+  "종합점수": 점수,
+  "분석근거": "상세 분석 내용"
+}}""")
+        ])
+        
+        parser = JsonOutputParser()
+        chain = prompt | self.llm | parser
+        
+        try:
+            result = chain.invoke({
+                "title": issue.get("제목", ""),
+                "content": issue.get("내용", "")  # 원본에서는 "내용" 필드 사용
+            })
+            
+            return {
+                "직접적_기업영향": result.get("직접적_기업영향", 5),
+                "산업_전반영향": result.get("산업_전반영향", 5),
+                "거시경제_영향": result.get("거시경제_영향", 5), 
+                "투자심리_영향": result.get("투자심리_영향", 5),
+                "종합점수": result.get("종합점수", 5),
+                "분석근거": result.get("분석근거", "AI 분석 완료")
+            }
+            
+        except Exception as e:
+            print(f"❌ AI 분석 실패: {e}")
+            return {
+                "직접적_기업영향": 5,
+                "산업_전반영향": 5,
+                "거시경제_영향": 5,
+                "투자심리_영향": 5,
+                "종합점수": 5,
+                "분석근거": f"AI 분석 실패: {e}"
+            }
+    
+    def _save_filtering_result(self, result: Dict):
+        """필터링 결과 저장"""
+        timestamp = datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+        filename = f"{timestamp}_StockFiltered_{len(result['selected_issues'])}issues.json"
+        filepath = self.data_dir / filename
+        
+        save_data = {
+            **result,
+            "file_info": {
+                "filename": filename,
+                "created_at": datetime.now().isoformat(),
+                "filter_version": "StockRelevanceFilter_v1.0"
+            }
+        }
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(save_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 필터링 결과 저장: {filepath}")

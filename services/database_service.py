@@ -1,197 +1,394 @@
-# services/database_service.py
-import sqlite3
-import pandas as pd
+"""
+MySQL 데이터베이스 서비스 - 간단한 버전
+백그라운드 파이프라인 결과 저장 + API 조회용
+"""
+
+import mysql.connector
+from mysql.connector import Error
+from typing import List, Dict, Optional
 import json
-import aiosqlite
-from typing import List, Dict, Any, Optional
+from datetime import datetime
+from config import DATABASE_CONFIG
 
-from config import DATABASE_PATH, INDUSTRY_CSV_PATH, PAST_NEWS_CSV_PATH
-from models.schemas import SimulationRequest, SimulationResponse
-
-class OrdaDatabase:
-    """DB 파일 생성 및 CSV 데이터 로딩을 담당하는 동기 클래스"""
-    def __init__(self, db_path=DATABASE_PATH):
-        self.db_path = db_path
-        self.db_path.parent.mkdir(exist_ok=True, parents=True)
-
-    def setup_database(self):
-        """DB 테이블 생성 및 초기 데이터 로딩"""
-        if self.db_path.exists():
-            print("✅ 데이터베이스 파일이 이미 존재합니다. 초기화를 건너뜁니다.")
-            return
-
-        print("🚀 데이터베이스 초기 설정을 시작합니다.")
-        self._create_tables()
-        self._import_csv_data()
-        print("🎉 데이터베이스 초기 설정 완료!")
-
-    def _create_tables(self):
-        """데이터베이스 테이블 생성"""
-        create_tables_sql = """
-        CREATE TABLE IF NOT EXISTS industries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            krx_name TEXT NOT NULL UNIQUE,
-            description TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS past_issues (
-            id TEXT PRIMARY KEY,
-            issue_name TEXT NOT NULL,
-            contents TEXT,
-            related_industries TEXT,
-            industry_reason TEXT,
-            start_date TEXT,
-            end_date TEXT,
-            evidence_source TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS current_issues (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            issue_number INTEGER,
-            title TEXT NOT NULL,
-            content TEXT,
-            crawled_at TIMESTAMP,
-            source TEXT DEFAULT 'bigkinds',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        CREATE TABLE IF NOT EXISTS simulation_results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scenario_id TEXT NOT NULL,
-            investment_amount INTEGER,
-            investment_period INTEGER,
-            selected_stocks TEXT,
-            total_return_pct REAL,
-            final_amount INTEGER,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
+class DatabaseService:
+    """MySQL 기반 데이터베이스 서비스"""
+    
+    def __init__(self):
+        self.connection = None
+        self._initialized = False
+    
+    def initialize(self):
+        """MySQL 연결 초기화"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.executescript(create_tables_sql)
-            print("✅ 데이터베이스 테이블이 성공적으로 생성되었습니다.")
-        except Exception as e:
+            self.connection = mysql.connector.connect(**DATABASE_CONFIG)
+            if self.connection.is_connected():
+                self._initialized = True
+                print(f"✅ MySQL 연결 성공 (포트: {DATABASE_CONFIG['port']})")
+                self._create_tables()
+        except Error as e:
+            print(f"❌ MySQL 연결 실패: {e}")
+            self._initialized = False
+    
+    def is_initialized(self) -> bool:
+        """연결 상태 확인"""
+        try:
+            return (self._initialized and 
+                   self.connection and 
+                   self.connection.is_connected())
+        except:
+            return False
+    
+    async def test_connection(self):
+        """연결 테스트"""
+        if not self.is_initialized():
+            raise Exception("데이터베이스가 연결되지 않았습니다.")
+        
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            return True
+        finally:
+            cursor.close()
+    
+    def _create_tables(self):
+        """필요한 테이블 생성"""
+        cursor = self.connection.cursor()
+        
+        try:
+            # 뉴스 이슈 테이블
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news_issues (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                issue_number INT,
+                title VARCHAR(500) NOT NULL,
+                content TEXT,
+                category VARCHAR(100),
+                extracted_at DATETIME,
+                stock_relevance_score DECIMAL(4,1),
+                ranking INT,
+                rag_confidence DECIMAL(4,1),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB CHARSET=utf8mb4
+            """)
+            
+            # 관련 산업 테이블
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS related_industries (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                news_issue_id INT NOT NULL,
+                industry_name VARCHAR(200),
+                final_score DECIMAL(4,1),
+                ai_reason TEXT,
+                FOREIGN KEY (news_issue_id) REFERENCES news_issues(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB CHARSET=utf8mb4
+            """)
+            
+            # 관련 과거 이슈 테이블
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS related_past_issues (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                news_issue_id INT NOT NULL,
+                issue_name VARCHAR(200),
+                final_score DECIMAL(4,1),
+                period VARCHAR(100),
+                ai_reason TEXT,
+                FOREIGN KEY (news_issue_id) REFERENCES news_issues(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB CHARSET=utf8mb4
+            """)
+            
+            # 파이프라인 로그 테이블
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS pipeline_logs (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                pipeline_id VARCHAR(50),
+                started_at DATETIME,
+                completed_at DATETIME,
+                final_status VARCHAR(20),
+                total_crawled INT,
+                selected_count INT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB CHARSET=utf8mb4
+            """)
+            
+            self.connection.commit()
+            print("✅ MySQL 테이블 생성 완료")
+            
+        except Error as e:
             print(f"❌ 테이블 생성 실패: {e}")
             raise
-
-    def _import_csv_data(self):
-        """CSV 파일들을 SQLite로 가져오기"""
+        finally:
+            cursor.close()
+    
+    # ========================================================================
+    # 파이프라인 결과 저장
+    # ========================================================================
+    
+    async def save_pipeline_result(self, result: Dict):
+        """파이프라인 결과를 MySQL에 저장"""
+        if not self.is_initialized():
+            raise Exception("데이터베이스가 연결되지 않았습니다.")
+        
+        cursor = self.connection.cursor()
+        
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                # 산업 분류 데이터
-                if INDUSTRY_CSV_PATH.exists():
-                    df_ind = pd.read_csv(INDUSTRY_CSV_PATH).dropna(subset=['KRX 업종명'])
-                    df_ind = df_ind.drop_duplicates(subset=['KRX 업종명'])
-                    df_ind[['KRX 업종명', '상세내용']].rename(columns={'KRX 업종명': 'krx_name', '상세내용': 'description'}).to_sql('industries', conn, if_exists='append', index=False)
-                    print(f"✅ 산업 분류 데이터 {len(df_ind)}건을 가져왔습니다.")
-                else:
-                    print(f"⚠️ 경고: 산업 DB 파일({INDUSTRY_CSV_PATH})을 찾을 수 없습니다.")
-
-                # 과거 이슈 데이터
-                if PAST_NEWS_CSV_PATH.exists():
-                    df_past = pd.read_csv(PAST_NEWS_CSV_PATH).dropna(subset=['ID'])
-                    df_past = df_past.fillna('')
-                    df_past_renamed = df_past.rename(columns={
-                        'ID': 'id', 'Issue_name': 'issue_name', 'Contents': 'contents',
-                        '관련 산업': 'related_industries', '산업 이유': 'industry_reason',
-                        'Start_date': 'start_date', 'Fin_date': 'end_date', '근거자료': 'evidence_source'
-                    })
-                    df_past_renamed[['id', 'issue_name', 'contents', 'related_industries', 'industry_reason', 'start_date', 'end_date', 'evidence_source']].to_sql('past_issues', conn, if_exists='append', index=False)
-                    print(f"✅ 과거 이슈 데이터 {len(df_past)}건을 가져왔습니다.")
-                else:
-                    print(f"⚠️ 경고: 과거 뉴스 파일({PAST_NEWS_CSV_PATH})을 찾을 수 없습니다.")
-        except Exception as e:
-            print(f"❌ CSV 데이터 가져오기 실패: {e}")
-            raise
-
-    def get_database_stats(self) -> Dict[str, Any]:
-        """데이터베이스 통계 정보 반환"""
-        stats = {}
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                tables = ['industries', 'past_issues', 'current_issues', 'simulation_results']
-                for table in tables:
-                    count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                    stats[table] = count
-            stats['db_size_mb'] = round(self.db_path.stat().st_size / (1024 * 1024), 2)
-            return stats
-        except Exception as e:
-            print(f"❌ DB 통계 조회 실패: {e}")
-            return {}
-
-class OrdaDatabaseAPI:
-    """FastAPI에서 사용할 비동기 DB 쿼리 클래스"""
-    def __init__(self, db_path=DATABASE_PATH):
-        self.db_path = str(db_path)
-
-    async def get_past_news(self, limit: int, search: Optional[str], industry: Optional[str]) -> List[Dict]:
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            query = "SELECT * FROM past_issues WHERE 1=1"
-            params = []
-            if search:
-                query += " AND (issue_name LIKE ? OR contents LIKE ?)"
-                params.extend([f"%{search}%", f"%{search}%"])
-            if industry:
-                query += " AND related_industries LIKE ?"
-                params.append(f"%{industry}%")
-            query += " ORDER BY start_date DESC LIMIT ?"
-            params.append(limit)
+            print("💾 MySQL에 파이프라인 결과 저장 중...")
             
-            cursor = await db.execute(query, tuple(params))
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            # 기존 데이터 삭제 (최신 상태 유지)
+            cursor.execute("DELETE FROM related_past_issues")
+            cursor.execute("DELETE FROM related_industries")
+            cursor.execute("DELETE FROM news_issues")
+            
+            # API 데이터 추출
+            api_data = result.get("api_ready_data", {})
+            selected_issues = api_data.get("data", {}).get("selected_issues", [])
+            
+            # 새 뉴스 이슈들 저장
+            for issue_data in selected_issues:
+                # 1. 뉴스 이슈 저장
+                issue_id = self._save_news_issue(cursor, issue_data)
+                
+                # 2. 관련 산업 저장
+                for industry in issue_data.get("관련산업", []):
+                    self._save_related_industry(cursor, issue_id, industry)
+                
+                # 3. 관련 과거 이슈 저장
+                for past_issue in issue_data.get("관련과거이슈", []):
+                    self._save_related_past_issue(cursor, issue_id, past_issue)
+            
+            # 파이프라인 로그 저장
+            self._save_pipeline_log(cursor, result, api_data)
+            
+            self.connection.commit()
+            print(f"✅ MySQL 저장 완료: {len(selected_issues)}개 이슈")
+            
+        except Error as e:
+            self.connection.rollback()
+            print(f"❌ MySQL 저장 실패: {e}")
+            raise
+        finally:
+            cursor.close()
+    
+    def _save_news_issue(self, cursor, issue_data: Dict) -> int:
+        """뉴스 이슈 저장"""
+        query = """
+        INSERT INTO news_issues 
+        (issue_number, title, content, category, extracted_at, 
+         stock_relevance_score, ranking, rag_confidence)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        
+        # 날짜 처리
+        extracted_at = issue_data.get("추출시간")
+        if isinstance(extracted_at, str):
+            try:
+                extracted_at = datetime.fromisoformat(extracted_at.replace('Z', '+00:00'))
+            except:
+                extracted_at = datetime.now()
+        
+        values = (
+            issue_data.get("이슈번호", 0),
+            issue_data.get("제목", "")[:500],  # 길이 제한
+            issue_data.get("내용", ""),
+            issue_data.get("카테고리", ""),
+            extracted_at,
+            float(issue_data.get("주식시장_관련성_점수", 0)),
+            issue_data.get("순위", 0),
+            float(issue_data.get("RAG분석신뢰도", 0))
+        )
+        
+        cursor.execute(query, values)
+        return cursor.lastrowid
+    
+    def _save_related_industry(self, cursor, news_issue_id: int, industry: Dict):
+        """관련 산업 저장"""
+        query = """
+        INSERT INTO related_industries 
+        (news_issue_id, industry_name, final_score, ai_reason)
+        VALUES (%s, %s, %s, %s)
+        """
+        
+        values = (
+            news_issue_id,
+            industry.get("name", "")[:200],
+            float(industry.get("final_score", 0)),
+            industry.get("ai_reason", "")
+        )
+        
+        cursor.execute(query, values)
+    
+    def _save_related_past_issue(self, cursor, news_issue_id: int, past_issue: Dict):
+        """관련 과거 이슈 저장"""
+        query = """
+        INSERT INTO related_past_issues 
+        (news_issue_id, issue_name, final_score, period, ai_reason)
+        VALUES (%s, %s, %s, %s, %s)
+        """
+        
+        values = (
+            news_issue_id,
+            past_issue.get("name", "")[:200],
+            float(past_issue.get("final_score", 0)),
+            past_issue.get("period", ""),
+            past_issue.get("ai_reason", "")
+        )
+        
+        cursor.execute(query, values)
+    
+    def _save_pipeline_log(self, cursor, result: Dict, api_data: Dict):
+        """파이프라인 로그 저장"""
+        query = """
+        INSERT INTO pipeline_logs 
+        (pipeline_id, started_at, completed_at, final_status, total_crawled, selected_count)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        
+        def parse_datetime(date_str):
+            if not date_str:
+                return None
+            try:
+                return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            except:
+                return None
+        
+        values = (
+            result.get("pipeline_id", ""),
+            parse_datetime(result.get("started_at")),
+            parse_datetime(result.get("completed_at")),
+            result.get("final_status", ""),
+            api_data.get("data", {}).get("total_crawled", 0),
+            api_data.get("data", {}).get("selected_count", 0)
+        )
+        
+        cursor.execute(query, values)
+    
+    # ========================================================================
+    # 데이터 조회 (API용)
+    # ========================================================================
+    
+    async def get_latest_news_issues(self) -> List[Dict]:
+        """최신 뉴스 이슈들 조회"""
+        if not self.is_initialized():
+            return []
+        
+        cursor = self.connection.cursor(dictionary=True)
+        
+        try:
+            # 뉴스 이슈 조회
+            cursor.execute("""
+            SELECT * FROM news_issues 
+            ORDER BY ranking ASC
+            """)
+            news_issues = cursor.fetchall()
+            
+            # 각 이슈에 관련 정보 추가
+            for issue in news_issues:
+                issue_id = issue['id']
+                
+                # 관련 산업 조회
+                cursor.execute("""
+                SELECT industry_name, final_score, ai_reason
+                FROM related_industries 
+                WHERE news_issue_id = %s 
+                ORDER BY final_score DESC
+                """, (issue_id,))
+                issue['related_industries'] = cursor.fetchall()
+                
+                # 관련 과거 이슈 조회
+                cursor.execute("""
+                SELECT issue_name, final_score, period, ai_reason
+                FROM related_past_issues 
+                WHERE news_issue_id = %s 
+                ORDER BY final_score DESC
+                """, (issue_id,))
+                issue['related_past_issues'] = cursor.fetchall()
+                
+                # 날짜 형식 변환
+                if issue.get('extracted_at'):
+                    issue['extracted_at'] = issue['extracted_at'].isoformat()
+                if issue.get('updated_at'):
+                    issue['updated_at'] = issue['updated_at'].isoformat()
+            
+            return news_issues
+            
+        except Error as e:
+            print(f"❌ 뉴스 조회 실패: {e}")
+            return []
+        finally:
+            cursor.close()
+    
+    async def get_issue_with_relations(self, issue_id: int) -> Optional[Dict]:
+        """특정 이슈 상세 조회"""
+        if not self.is_initialized():
+            return None
+        
+        cursor = self.connection.cursor(dictionary=True)
+        
+        try:
+            # 뉴스 이슈 기본 정보
+            cursor.execute("SELECT * FROM news_issues WHERE id = %s", (issue_id,))
+            issue = cursor.fetchone()
+            
+            if not issue:
+                return None
+            
+            # 관련 산업
+            cursor.execute("""
+            SELECT industry_name, final_score, ai_reason
+            FROM related_industries WHERE news_issue_id = %s
+            """, (issue_id,))
+            issue['related_industries'] = cursor.fetchall()
+            
+            # 관련 과거 이슈
+            cursor.execute("""
+            SELECT issue_name, final_score, period, ai_reason
+            FROM related_past_issues WHERE news_issue_id = %s
+            """, (issue_id,))
+            issue['related_past_issues'] = cursor.fetchall()
+            
+            return issue
+            
+        except Error as e:
+            print(f"❌ 이슈 상세 조회 실패: {e}")
+            return None
+        finally:
+            cursor.close()
+    
+    async def get_latest_pipeline_log(self) -> Optional[Dict]:
+        """최근 파이프라인 로그 조회"""
+        if not self.is_initialized():
+            return None
+        
+        cursor = self.connection.cursor(dictionary=True)
+        
+        try:
+            cursor.execute("""
+            SELECT * FROM pipeline_logs 
+            ORDER BY created_at DESC 
+            LIMIT 1
+            """)
+            result = cursor.fetchone()
+            
+            if result:
+                # 날짜 형식 변환
+                for date_field in ['started_at', 'completed_at', 'created_at']:
+                    if result.get(date_field):
+                        result[date_field] = result[date_field].isoformat()
+            
+            return result
+            
+        except Error as e:
+            print(f"❌ 파이프라인 로그 조회 실패: {e}")
+            return None
+        finally:
+            cursor.close()
 
-    async def get_industries(self, search: Optional[str], limit: int) -> List[Dict]:
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            query = "SELECT * FROM industries WHERE 1=1"
-            params = []
-            if search:
-                query += " AND (krx_name LIKE ? OR description LIKE ?)"
-                params.extend([f"%{search}%", f"%{search}%"])
-            query += " ORDER BY krx_name LIMIT ?"
-            params.append(limit)
+# 전역 인스턴스
+_database_service = None
 
-            cursor = await db.execute(query, tuple(params))
-            rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
-
-    async def save_simulation_result(self, req: SimulationRequest, res: SimulationResponse):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
-                """
-                INSERT INTO simulation_results 
-                (scenario_id, investment_amount, investment_period, selected_stocks, total_return_pct, final_amount)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    req.scenario_id,
-                    req.investment_amount,
-                    req.investment_period,
-                    json.dumps([s.dict() for s in req.selected_stocks], ensure_ascii=False),
-                    res.simulation_results.total_return_pct,
-                    res.simulation_results.final_amount,
-                ),
-            )
-            await db.commit()
-
-# --- Service Singleton ---
-orda_db: Optional[OrdaDatabase] = None
-db_api: Optional[OrdaDatabaseAPI] = None
-
-def initialize():
-    """서비스 초기화 함수"""
-    global orda_db, db_api
-    if orda_db is None:
-        orda_db = OrdaDatabase()
-        orda_db.setup_database()
-    if db_api is None:
-        db_api = OrdaDatabaseAPI()
-    print("✅ Database Service initialized.")
-
-def is_initialized() -> bool:
-    return orda_db is not None and db_api is not None
-
-def get_health() -> dict:
-    status = "ok" if is_initialized() and DATABASE_PATH.exists() else "error"
-    return {"name": "database_service", "status": status}
+def get_database_service() -> DatabaseService:
+    global _database_service
+    if _database_service is None:
+        _database_service = DatabaseService()
+    return _database_service

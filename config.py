@@ -1,45 +1,43 @@
-# config.py
 import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# .env 파일에서 환경 변수 로드
+# .env 파일 로드
 load_dotenv()
 
-# --- 기본 경로 설정 ---
+# --- 기본 경로 ---
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-LOG_DIR = BASE_DIR / "logs"
+DATA2_DIR = BASE_DIR / "data2"
 
-# --- 데이터 파일 경로 ---
-INDUSTRY_CSV_PATH = DATA_DIR / "산업DB.v.0.3.csv"
-PAST_NEWS_CSV_PATH = DATA_DIR / "Past_news.csv"
-DATABASE_PATH = DATA_DIR / "orda.db"
+# 디렉토리 생성
+DATA2_DIR.mkdir(exist_ok=True)
 
-# --- API 및 모델 설정 ---
+# --- API 키 ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ordaproject")
 
-# LLM 모델 이름
+# --- 모델 설정 ---
 MAIN_LLM_MODEL = "gpt-4o"
 FAST_LLM_MODEL = "gpt-4o-mini"
 EMBEDDING_MODEL = "text-embedding-3-small"
 
-# --- Pinecone 설정 ---
-PINECONE_INDEX_NAME = "ordaproject"
-PINECONE_NAMESPACE_INDUSTRY = "industry"
-PINECONE_NAMESPACE_PAST_ISSUE = "past_issue"
+# --- MySQL 설정 ---
+DATABASE_CONFIG = {
+    'host': os.getenv('MYSQL_HOST', 'localhost'),
+    'port': int(os.getenv('MYSQL_PORT', 3308)),
+    'user': os.getenv('MYSQL_USER', 'orda_user'),
+    'password': os.getenv('MYSQL_PASSWORD', 'orda_password'),
+    'database': os.getenv('MYSQL_DATABASE', 'orda_news'),
+    'charset': 'utf8mb4',
+    'autocommit': True
+}
 
-# --- 크롤링 설정 ---
-CRAWLING_TARGET_CATEGORIES = ["정치", "경제", "사회", "문화", "국제", "지역", "IT과학"]
-CRAWLING_ISSUES_PER_CATEGORY = 10
-
-# --- 시뮬레이션 설정 ---
-YFINANCE_TICKER_SUFFIX_KOSPI = ".KS"
-YFINANCE_TICKER_SUFFIX_KOSDAQ = ".KQ"
-
-# --- FastAPI 서버 설정 ---
+# --- FastAPI 설정 ---
 API_TITLE = "오르다(Orda) API"
-API_VERSION = "1.0.0"
+API_VERSION = "2.0.0"
 API_DESCRIPTION = "투자 학습 플랫폼 백엔드 API"
 CORS_ALLOW_ORIGINS = ["*"]
+
+print(f"✅ Config 로드 완료 - MySQL 포트: {DATABASE_CONFIG['port']}")

@@ -1,122 +1,232 @@
-# services/pipeline_service.py
+"""
+파이프라인 통합 서비스 - 크롤링, 필터링, RAG 분석을 연결
+integrated_pipeline.py의 IntegratedNewsPipeline 로직 이관
+"""
+
 import json
-from typing import List, Dict, Optional
+from pathlib import Path
+from typing import Dict, List
 from datetime import datetime
-import time
-import asyncio
+from .crawling_service import CrawlingService
+from .rag_service import RAGService
 
-from services import crawling_service, rag_service, database_service
-from config import FAST_LLM_MODEL, OPENAI_API_KEY
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-
-# --- 캐시를 위한 전역 변수 ---
-_latest_analyzed_issues_cache: List[Dict] = []
-_last_update_time: Optional[datetime] = None
-
-class StockMarketFilter:
-    """LLM을 이용해 주식 시장 관련성이 높은 뉴스를 필터링하는 클래스"""
-    def __init__(self):
-        self.llm = ChatOpenAI(model=FAST_LLM_MODEL, temperature=0.1, api_key=OPENAI_API_KEY)
-        self.prompt = self._create_prompt()
-        self.parser = JsonOutputParser()
-        self.chain = self.prompt | self.llm | self.parser
-
-    def _create_prompt(self) -> ChatPromptTemplate:
-        return ChatPromptTemplate.from_template(
-            """
-            당신은 한국 주식시장 전문 애널리스트입니다.
-            다음 뉴스 이슈 목록에서 주식시장에 가장 큰 영향을 미칠 것으로 예상되는 상위 5개를 선별해주세요.
-            평가 기준은 '직접적 기업 영향', '정책적 영향', '시장 심리', '산업 트렌드'입니다.
-
-            ## 뉴스 목록:
-            {issues_list}
-
-            ## 출력 형식 (JSON):
-            {{
-              "selected_issues": [
-                {{
-                  "이슈번호": <원본 이슈번호>,
-                  "제목": "<원본 제목>",
-                  "선별이유": "<주식시장 관점에서의 선별 이유>"
-                }}
-              ]
-            }}
-            """
-        )
+class PipelineService:
+    """전체 파이프라인 통합 서비스"""
     
-    def filter(self, issues: List[Dict], target_count: int = 5) -> List[Dict]:
-        """주어진 이슈 리스트에서 관련성 높은 이슈를 필터링"""
-        if not issues:
-            return []
+    def __init__(self, data_dir: str = "data2", headless: bool = True):
+        self.data_dir = Path(data_dir)
+        self.data_dir.mkdir(exist_ok=True)
         
-        issues_text = "\n".join([f"- 이슈번호 {i.get('이슈번호', 'N/A')}: {i.get('제목', 'N/A')}" for i in issues])
+        # 서비스 초기화
+        self.crawling_service = CrawlingService(str(self.data_dir), headless)
+        self.rag_service = RAGService()
+        
+        print("✅ 파이프라인 서비스 초기화 완료")
+    
+    def execute_full_pipeline(self, 
+                             issues_per_category: int = 10,
+                             target_filtered_count: int = 5) -> Dict:
+        """전체 파이프라인 실행: 크롤링 → 필터링 → RAG 분석"""
+        
+        pipeline_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        started_at = datetime.now()
+        
+        print(f"🚀 파이프라인 실행 시작 (ID: {pipeline_id})")
+        print(f"📋 설정: 카테고리별 {issues_per_category}개, 최종 선별 {target_filtered_count}개")
+        
+        result = {
+            "pipeline_id": pipeline_id,
+            "started_at": started_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "completed_at": None,
+            "execution_time": None,
+            "final_status": "running",
+            "steps_completed": [],
+            "errors": []
+        }
         
         try:
-            result = self.chain.invoke({"issues_list": issues_text})
-            selected_info = result.get("selected_issues", [])
+            # Step 1: 크롤링 + 필터링
+            print(f"\n{'='*60}")
+            print(f"📡 Step 1: 크롤링 + 주식시장 필터링")
+            print(f"{'='*60}")
             
-            # 원본 이슈 데이터와 병합
-            selected_ids = {s['이슈번호'] for s in selected_info}
-            final_issues = [issue for issue in issues if issue.get('이슈번호') in selected_ids]
+            crawling_result = self.crawling_service.crawl_and_filter_news(
+                issues_per_category, target_filtered_count
+            )
             
-            # 선별 이유 추가
-            info_map = {s['이슈번호']: s for s in selected_info}
-            for issue in final_issues:
-                issue['선별이유'] = info_map.get(issue['이슈번호'], {}).get('선별이유', 'N/A')
-
-            return final_issues[:target_count]
-
+            result["crawling_result"] = {
+                "total_crawled": len(crawling_result.get("all_issues", [])),
+                "filtered_count": len(crawling_result.get("filtered_issues", []))
+            }
+            result["steps_completed"].append("crawling_and_filtering")
+            
+            # Step 2: RAG 분석
+            print(f"\n{'='*60}")
+            print(f"🔍 Step 2: RAG 분석 (산업 + 과거 이슈)")
+            print(f"{'='*60}")
+            
+            filtered_issues = crawling_result.get("filtered_issues", [])
+            if not filtered_issues:
+                raise ValueError("필터링된 이슈가 없습니다.")
+            
+            enriched_issues = self.rag_service.analyze_issues_with_rag(filtered_issues)
+            
+            result["rag_result"] = {
+                "analyzed_count": len(enriched_issues),
+                "average_confidence": self._calculate_average_confidence(enriched_issues)
+            }
+            result["steps_completed"].append("rag_analysis")
+            
+            # Step 3: API용 데이터 준비
+            print(f"\n{'='*60}")
+            print(f"🌐 Step 3: API 응답 데이터 준비")
+            print(f"{'='*60}")
+            
+            api_data = self._prepare_api_data(crawling_result, enriched_issues)
+            result["api_ready_data"] = api_data
+            result["steps_completed"].append("api_preparation")
+            
+            # 파이프라인 완료
+            completed_at = datetime.now()
+            execution_time = completed_at - started_at
+            
+            result.update({
+                "completed_at": completed_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "execution_time": str(execution_time),
+                "final_status": "success"
+            })
+            
+            # 결과 저장
+            saved_file = self._save_pipeline_result(result)
+            result["saved_file"] = saved_file
+            
+            print(f"\n🎉 파이프라인 실행 완료!")
+            print(f"⏰ 실행 시간: {execution_time}")
+            print(f"📊 최종 결과: {len(enriched_issues)}개 이슈 분석 완료")
+            
+            return result
+            
         except Exception as e:
-            print(f"❌ LLM 필터링 실패: {e}. 상위 {target_count}개 이슈를 임의로 반환합니다.")
-            return issues[:target_count]
-
-_filter_instance = StockMarketFilter()
-
-async def run_full_pipeline():
-    """전체 데이터 파이프라인을 순차적으로 실행"""
-    global _latest_analyzed_issues_cache, _last_update_time
+            error_msg = f"파이프라인 실행 실패: {e}"
+            print(f"❌ {error_msg}")
+            
+            result.update({
+                "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "final_status": "failed",
+                "errors": [error_msg]
+            })
+            
+            raise Exception(error_msg)
     
-    start_time = time.time()
-    print("🚀 전체 뉴스 파이프라인을 시작합니다.")
-
-    # 1. 뉴스 크롤링
-    crawled_issues = crawling_service.crawl_news()
-    if not crawled_issues:
-        print("⚠️ 크롤링된 뉴스가 없어 파이프라인을 중단합니다.")
-        return
-
-    # 2. LLM 필터링
-    print("🔍 주식 시장 관련성 높은 뉴스 5개를 필터링합니다.")
-    filtered_issues = _filter_instance.filter(crawled_issues)
-    if not filtered_issues:
-        print("⚠️ 필터링된 뉴스가 없어 파이프라인을 중단합니다.")
-        return
-
-    # 3. RAG 종합 분석 (각 이슈에 대해)
-    print(f"🧠 필터링된 {len(filtered_issues)}개 이슈에 대해 RAG 종합 분석을 수행합니다.")
-    analyzed_issues = []
+    def _prepare_api_data(self, crawling_result: Dict, enriched_issues: List[Dict]) -> Dict:
+        """API 응답용 데이터 구성"""
+        
+        api_data = {
+            "success": True,
+            "data": {
+                "total_crawled": len(crawling_result.get("all_issues", [])),
+                "selected_count": len(enriched_issues),
+                "selection_criteria": "주식시장 영향도 + RAG 분석",
+                "selected_issues": []
+            },
+            "metadata": {
+                "crawled_at": crawling_result.get("crawling_metadata", {}).get("timestamp", ""),
+                "categories_processed": crawling_result.get("crawling_metadata", {}).get("categories_processed", []),
+                "ai_filter_applied": True,
+                "rag_analysis_applied": True,
+                "filter_model": "gpt-4o-mini",
+                "rag_model": "gpt-4o-mini",
+                "rag_confidence": self._calculate_average_confidence(enriched_issues)
+            }
+        }
+        
+        # 이슈 데이터 변환
+        for issue in enriched_issues:
+            api_issue = {
+                "이슈번호": issue.get("이슈번호", 0),
+                "제목": issue.get("제목", ""),
+                "내용": issue.get("원본내용", issue.get("내용", "")),
+                "카테고리": issue.get("카테고리", ""),
+                "추출시간": issue.get("추출시간", ""),
+                "주식시장_관련성_점수": issue.get("주식시장_관련성_점수", 0),
+                "순위": issue.get("rank", 0),
+                
+                # RAG 분석 결과
+                "관련산업": issue.get("관련산업", []),
+                "관련과거이슈": issue.get("관련과거이슈", []),
+                "RAG분석신뢰도": issue.get("RAG분석신뢰도", 0.0),
+            }
+            api_data["data"]["selected_issues"].append(api_issue)
+        
+        # 순위별 정렬
+        api_data["data"]["selected_issues"].sort(key=lambda x: x.get("순위", 999))
+        
+        return api_data
     
-    async def analyze(issue):
-        content = f"{issue['제목']}\n{issue['내용']}"
-        rag_result = await rag_service.comprehensive_analysis(content)
-        issue.update(rag_result) # 분석 결과를 원본 이슈에 병합
-        return issue
-
-    tasks = [analyze(issue) for issue in filtered_issues]
-    analyzed_issues = await asyncio.gather(*tasks)
-
-    # 4. 결과 캐싱
-    _latest_analyzed_issues_cache = analyzed_issues
-    _last_update_time = datetime.now()
+    def _calculate_average_confidence(self, enriched_issues: List[Dict]) -> float:
+        """평균 RAG 신뢰도 계산"""
+        if not enriched_issues:
+            return 0.0
+        
+        confidences = [issue.get("RAG분석신뢰도", 0.0) for issue in enriched_issues]
+        return round(sum(confidences) / len(confidences), 2)
     
-    end_time = time.time()
-    print(f"✅ 파이프라인 완료! (소요 시간: {end_time - start_time:.2f}초)")
-
-def get_latest_analyzed_issues() -> List[Dict]:
-    """캐시된 최신 분석 완료 이슈를 반환"""
-    if not _latest_analyzed_issues_cache:
-        print("ℹ️ 캐시가 비어있어 파이프라인을 즉시 실행합니다.")
-        asyncio.run(run_full_pipeline())
-    return _latest_analyzed_issues_cache
+    def _save_pipeline_result(self, result: Dict) -> str:
+        """파이프라인 실행 결과 저장"""
+        try:
+            timestamp = datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+            filename = f"{timestamp}_Pipeline_Results.json"
+            filepath = self.data_dir / filename
+            
+            save_data = {
+                **result,
+                "file_info": {
+                    "filename": filename,
+                    "created_at": datetime.now().isoformat(),
+                    "pipeline_version": "PipelineService_v1.0"
+                }
+            }
+            
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(save_data, f, ensure_ascii=False, indent=2)
+            
+            print(f"💾 파이프라인 결과 저장: {filepath}")
+            return str(filepath)
+            
+        except Exception as e:
+            print(f"⚠️ 결과 저장 실패: {e}")
+            return ""
+    
+    def get_latest_analyzed_issues(self) -> List[Dict]:
+        """최신 분석된 이슈들 조회 (API용)"""
+        try:
+            # 1. MySQL에서 먼저 조회 시도
+            from .database_service import DatabaseService
+            db_service = DatabaseService()
+            
+            if db_service.is_initialized():
+                mysql_data = db_service.get_latest_news_issues()
+                if mysql_data:
+                    print(f"📊 MySQL에서 {len(mysql_data)}개 이슈 조회")
+                    return mysql_data
+            
+            # 2. MySQL에 데이터가 없으면 최신 파일에서 조회
+            pipeline_files = list(self.data_dir.glob("*_Pipeline_Results.json"))
+            if pipeline_files:
+                latest_file = max(pipeline_files, key=lambda f: f.stat().st_mtime)
+                
+                with open(latest_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                api_data = data.get("api_ready_data", {})
+                issues = api_data.get("data", {}).get("selected_issues", [])
+                
+                print(f"📂 파일에서 {len(issues)}개 이슈 조회: {latest_file.name}")
+                return issues
+            
+            print("⚠️ 분석된 이슈 데이터가 없습니다.")
+            return []
+            
+        except Exception as e:
+            print(f"❌ 최신 이슈 조회 실패: {e}")
+            return []

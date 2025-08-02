@@ -1,28 +1,59 @@
-# api/health_api.py
 from fastapi import APIRouter
 from datetime import datetime
+from typing import Dict
 
-from models.schemas import HealthResponse
-from services import database_service, rag_service, simulation_service, crawling_service
+from services.database_service import DatabaseService
 
 router = APIRouter()
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health")
 async def health_check():
-    """
-    API 서버와 모든 백엔드 서비스의 상태를 확인합니다.
-    """
-    components = {
-        "database": database_service.get_health(),
-        "crawling": crawling_service.get_health(),
-        "rag": await rag_service.get_health(),
-        "simulation": simulation_service.get_health(),
-    }
-
-    is_healthy = all(comp["status"] == "ok" for comp in components.values())
+    """API 서버와 데이터베이스 상태를 확인합니다."""
     
-    return HealthResponse(
-        status="ok" if is_healthy else "degraded",
-        timestamp=datetime.now().isoformat(),
-        components=components,
-    )
+    components = {}
+    
+    # 데이터베이스 상태 확인
+    try:
+        db_service = DatabaseService()
+        await db_service.test_connection()
+        components["mysql_database"] = {
+            "status": "ok",
+            "message": "MySQL 연결 정상"
+        }
+    except Exception as e:
+        components["mysql_database"] = {
+            "status": "error",
+            "message": f"MySQL 연결 실패: {e}"
+        }
+    
+    # 백그라운드 파이프라인 상태 확인
+    try:
+        db_service = DatabaseService()
+        latest_log = await db_service.get_latest_pipeline_log()
+        
+        if latest_log and latest_log.get("final_status") == "success":
+            components["background_pipeline"] = {
+                "status": "ok",
+                "message": f"최근 실행 성공: {latest_log.get('completed_at')}"
+            }
+        else:
+            components["background_pipeline"] = {
+                "status": "warning",
+                "message": "최근 실행 로그 없음 또는 실패"
+            }
+    except Exception as e:
+        components["background_pipeline"] = {
+            "status": "error",
+            "message": f"파이프라인 상태 확인 실패: {e}"
+        }
+    
+    # 전체 상태 결정
+    all_ok = all(comp["status"] == "ok" for comp in components.values())
+    overall_status = "ok" if all_ok else "degraded"
+    
+    return {
+        "status": overall_status,
+        "timestamp": datetime.now().isoformat(),
+        "components": components,
+        "message": "모든 서비스 정상" if all_ok else "일부 서비스에 문제가 있습니다."
+    }

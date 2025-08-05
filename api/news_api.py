@@ -14,8 +14,7 @@ async def get_latest_news_issues():
     try:
         db_service = get_database_service()
         
-        # 동기 함수로 변경된 메서드 호출 (await 제거)
-        news_issues = db_service.get_latest_news_issues()
+        news_issues = await db_service.get_latest_news_issues()
         
         if not news_issues:
             # MySQL에 데이터가 없으면 fallback: 최신 JSON 파일에서 로드
@@ -59,8 +58,7 @@ async def get_pipeline_status():
     """백그라운드 파이프라인의 최근 실행 상태를 조회합니다."""
     try:
         db_service = get_database_service()
-        # 동기 함수로 변경 (await 제거)
-        latest_log = db_service.get_latest_pipeline_log()
+        latest_log = await db_service.get_latest_pipeline_log()
         
         return {
             "success": True,

@@ -1,19 +1,19 @@
-# services/rag_service.py (완전 수정된 버전)
+# services/rag_service.py (수정된 버전)
 """
 RAG 분석 서비스 - 벡터 검색 + AI Agent 하이브리드 분석
-integrated_pipeline.py의 RealRAGAnalysisExecutor 로직 이관
+Pinecone 메타데이터 구조에 맞춘 수정 버전
 """
 
 import os
-import json  # 추가된 import
+import json
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_pinecone import PineconeVectorStore
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from pinecone import Pinecone
 import openai
 
 class RAGService:
@@ -25,23 +25,15 @@ class RAGService:
         # 환경 설정
         self.EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
         self.INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "ordaproject")
+        self.PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
         
         # LLM 초기화
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
         self.embedding = OpenAIEmbeddings(model=self.EMBEDDING_MODEL)
         
-        # 벡터 스토어 초기화
-        self.industry_store = PineconeVectorStore(
-            index_name=self.INDEX_NAME,
-            embedding=self.embedding,
-            namespace="industry"
-        )
-        
-        self.past_issue_store = PineconeVectorStore(
-            index_name=self.INDEX_NAME,
-            embedding=self.embedding,
-            namespace="past_issue"
-        )
+        # Pinecone 클라이언트 직접 사용 (LangChain 대신)
+        self.pc = Pinecone(api_key=self.PINECONE_API_KEY)
+        self.index = self.pc.Index(self.INDEX_NAME)
         
         # 데이터베이스 로딩
         self._load_databases()
@@ -148,33 +140,38 @@ class RAGService:
             return []
     
     def _vector_search_industries(self, query: str) -> List[Dict]:
-        """벡터 검색으로 관련 산업 후보 추출"""
+        """Pinecone 직접 사용하여 관련 산업 후보 추출"""
         try:
-            results = self.industry_store.similarity_search_with_score(query, k=10)
+            # 쿼리 임베딩 생성
+            query_embedding = self.embedding.embed_query(query)
+            
+            # Pinecone에서 직접 검색
+            search_results = self.index.query(
+                vector=query_embedding,
+                top_k=10,
+                include_metadata=True,
+                namespace="industry"
+            )
             
             candidates = []
-            for doc, score in results:
-                content = doc.page_content.replace('\ufeff', '').replace('﻿', '')
-                
-                if "KRX 업종명:" in content:
-                    lines = content.split("\n")
-                    for line in lines:
-                        if "KRX 업종명:" in line:
-                            industry_name = line.replace("KRX 업종명:", "").strip()
-                            if industry_name in self.industry_dict:
-                                if not any(c["name"] == industry_name for c in candidates):
-                                    similarity_percentage = round((1 - score) * 100, 1)
-                                    
-                                    content_parts = content.split("상세내용:")
-                                    industry_detail = content_parts[1].strip() if len(content_parts) > 1 else self.industry_dict[industry_name]
-                                    
-                                    candidates.append({
-                                        "name": industry_name,
-                                        "similarity": similarity_percentage,
-                                        "description": industry_detail
-                                    })
-                            break
+            for match in search_results.matches:
+                if match.metadata:
+                    industry_name = match.metadata.get("name", "")
+                    industry_description = match.metadata.get("description", "")
+                    
+                    # 유효한 산업명인지 확인
+                    if industry_name in self.industry_dict:
+                        similarity_percentage = round(match.score * 100, 1)
+                        
+                        # 중복 제거
+                        if not any(c["name"] == industry_name for c in candidates):
+                            candidates.append({
+                                "name": industry_name,
+                                "similarity": similarity_percentage,
+                                "description": industry_description or self.industry_dict[industry_name]
+                            })
             
+            print(f"   📊 산업 벡터 검색: {len(candidates)}개 후보 발견")
             return candidates
             
         except Exception as e:
@@ -182,43 +179,44 @@ class RAGService:
             return []
     
     def _vector_search_past_issues(self, query: str) -> List[Dict]:
-        """벡터 검색으로 관련 과거 이슈 후보 추출"""
+        """Pinecone 직접 사용하여 관련 과거 이슈 후보 추출"""
         try:
-            results = self.past_issue_store.similarity_search_with_score(query, k=10)
+            # 쿼리 임베딩 생성
+            query_embedding = self.embedding.embed_query(query)
+            
+            # Pinecone에서 직접 검색
+            search_results = self.index.query(
+                vector=query_embedding,
+                top_k=10,
+                include_metadata=True,
+                namespace="past_issue"
+            )
             
             candidates = []
-            for doc, score in results:
-                content = doc.page_content.replace('\ufeff', '').replace('﻿', '')
-                
-                if "Issue_name:" in content:
-                    lines = content.split("\n")
-                    for line in lines:
-                        if "Issue_name:" in line:
-                            issue_name = line.replace("Issue_name:", "").strip()
-                            if issue_name in self.issue_dict:
-                                if not any(c["name"] == issue_name for c in candidates):
-                                    similarity_percentage = round((1 - score) * 100, 1)
-                                    
-                                    content_parts = content.split("Contents:")
-                                    issue_detail = content_parts[1].strip() if len(content_parts) > 1 else self.issue_dict[issue_name]
-                                    
-                                    # 기간 정보 추출
-                                    period = "N/A"
-                                    for line in lines:
-                                        if "Start_date:" in line and "Fin_date:" in line:
-                                            start = line.split("Start_date:")[1].split("Fin_date:")[0].strip()
-                                            end = line.split("Fin_date:")[1].strip()
-                                            period = f"{start} ~ {end}"
-                                            break
-                                    
-                                    candidates.append({
-                                        "name": issue_name,
-                                        "similarity": similarity_percentage,
-                                        "description": issue_detail,
-                                        "period": period
-                                    })
-                            break
+            for match in search_results.matches:
+                if match.metadata:
+                    issue_name = match.metadata.get("name", "")
+                    issue_description = match.metadata.get("description", "")
+                    start_date = match.metadata.get("start_date", "")
+                    end_date = match.metadata.get("end_date", "")
+                    
+                    # 유효한 이슈명인지 확인
+                    if issue_name in self.issue_dict:
+                        similarity_percentage = round(match.score * 100, 1)
+                        
+                        # 기간 정보 구성
+                        period = f"{start_date} ~ {end_date}" if start_date and end_date else "N/A"
+                        
+                        # 중복 제거
+                        if not any(c["name"] == issue_name for c in candidates):
+                            candidates.append({
+                                "name": issue_name,
+                                "similarity": similarity_percentage,
+                                "description": issue_description or self.issue_dict[issue_name],
+                                "period": period
+                            })
             
+            print(f"   📊 과거이슈 벡터 검색: {len(candidates)}개 후보 발견")
             return candidates
             
         except Exception as e:
@@ -251,10 +249,10 @@ class RAGService:
 
 출력 형식 (JSON):
 {{
-  "candidates": [
-    {{"industry": "산업명", "score": 점수, "reason": "관련성 이유"}},
-    ...
-  ]
+    "candidates": [
+        {{"industry": "산업명", "score": 점수, "reason": "관련성 이유"}},
+        ...
+    ]
 }}""")
         ])
         
@@ -266,13 +264,17 @@ class RAGService:
                 "news": news_content,
                 "industries": ", ".join(self.valid_krx_names[:50])  # 너무 많으면 제한
             })
-            return result.get("candidates", [])
+            
+            candidates = result.get("candidates", [])
+            print(f"   🤖 AI 산업 분석: {len(candidates)}개 후보 생성")
+            return candidates
+            
         except Exception as e:
-            print(f"❌ AI 산업 후보 추출 실패: {e}")  # 🔧 수정: 에러 메시지 올바르게 변경
+            print(f"❌ AI 산업 후보 추출 실패: {e}")
             return []
     
     def _ai_extract_candidate_past_issues(self, news_content: str) -> List[Dict]:
-        """AI Agent가 관련 과거 이슈 후보 추출"""  # 🔧 추가: 빠져있던 함수 추가
+        """AI Agent가 관련 과거 이슈 후보 추출"""
         if not self.valid_issue_names:
             return []
             
@@ -297,10 +299,10 @@ class RAGService:
 
 출력 형식 (JSON):
 {{
-  "candidates": [
-    {{"issue": "이슈명", "score": 점수, "reason": "관련성 이유"}},
-    ...
-  ]
+    "candidates": [
+        {{"issue": "이슈명", "score": 점수, "reason": "관련성 이유"}},
+        ...
+    ]
 }}""")
         ])
         
@@ -312,7 +314,11 @@ class RAGService:
                 "news": news_content,
                 "issues": ", ".join(self.valid_issue_names[:50])  # 너무 많으면 제한
             })
-            return result.get("candidates", [])
+            
+            candidates = result.get("candidates", [])
+            print(f"   🤖 AI 과거이슈 분석: {len(candidates)}개 후보 생성")
+            return candidates
+            
         except Exception as e:
             print(f"❌ AI 과거 이슈 후보 추출 실패: {e}")
             return []
@@ -321,12 +327,12 @@ class RAGService:
         """벡터 검색 결과와 AI 후보를 결합하여 최종 관련 산업 도출"""
         all_candidates = {}
         
-        # 벡터 검색 결과 추가
+        # 벡터 검색 결과 추가 (similarity를 10점 만점으로 정규화)
         for candidate in vector_candidates:
             name = candidate["name"]
             all_candidates[name] = {
                 "name": name,
-                "vector_similarity": candidate["similarity"],
+                "vector_score": min(candidate["similarity"] / 10, 10),  # 정규화
                 "ai_score": 0,
                 "ai_reason": "",
                 "description": candidate["description"]
@@ -341,26 +347,25 @@ class RAGService:
             elif name in self.industry_dict:  # 유효한 산업명인 경우만
                 all_candidates[name] = {
                     "name": name,
-                    "vector_similarity": 0,
+                    "vector_score": 0,
                     "ai_score": candidate["score"],
                     "ai_reason": candidate["reason"],
                     "description": self.industry_dict[name]
                 }
         
-        # 종합 점수 계산 (벡터 유사도 + AI 점수)
+        # 종합 점수 계산 (벡터 점수 + AI 점수의 가중평균)
         for candidate in all_candidates.values():
-            # 벡터 유사도를 10점 만점으로 정규화
-            normalized_vector = candidate["vector_similarity"] / 10
+            vector_score = candidate["vector_score"]
             ai_score = candidate["ai_score"]
             
             # 가중평균 (AI 점수에 더 높은 가중치)
-            candidate["final_score"] = round((normalized_vector * 0.3 + ai_score * 0.7), 1)
+            candidate["final_score"] = round((vector_score * 0.3 + ai_score * 0.7), 1)
         
         # 최종 점수로 정렬
         sorted_candidates = sorted(all_candidates.values(), 
-                                  key=lambda x: x["final_score"], 
-                                  reverse=True)
-        
+                                    key=lambda x: x["final_score"], 
+                                    reverse=True)
+            
         return sorted_candidates
     
     def _combine_past_issue_results(self, query: str, vector_candidates: List[Dict], ai_candidates: List[Dict]) -> List[Dict]:
@@ -372,7 +377,7 @@ class RAGService:
             name = candidate["name"]
             all_candidates[name] = {
                 "name": name,
-                "vector_similarity": candidate["similarity"],
+                "vector_score": min(candidate["similarity"] / 10, 10),  # 정규화
                 "ai_score": 0,
                 "ai_reason": "",
                 "description": candidate["description"],
@@ -388,7 +393,7 @@ class RAGService:
             elif name in self.issue_dict:  # 유효한 이슈명인 경우만
                 all_candidates[name] = {
                     "name": name,
-                    "vector_similarity": 0,
+                    "vector_score": 0,
                     "ai_score": candidate["score"],
                     "ai_reason": candidate["reason"],
                     "description": self.issue_dict[name],
@@ -397,9 +402,9 @@ class RAGService:
         
         # 종합 점수 계산
         for candidate in all_candidates.values():
-            normalized_vector = candidate["vector_similarity"] / 10
+            vector_score = candidate["vector_score"]
             ai_score = candidate["ai_score"]
-            candidate["final_score"] = round((normalized_vector * 0.3 + ai_score * 0.7), 1)
+            candidate["final_score"] = round((vector_score * 0.3 + ai_score * 0.7), 1)
         
         # 최종 점수로 정렬
         sorted_candidates = sorted(all_candidates.values(), 
@@ -410,14 +415,25 @@ class RAGService:
     
     def _calculate_rag_confidence(self, industries: List[Dict], past_issues: List[Dict]) -> float:
         """RAG 분석 신뢰도 계산"""
-        if not industries or not past_issues:
+        if not industries and not past_issues:
             return 0.0
         
-        # 실제 final_score 기반 신뢰도 계산
-        industry_avg = sum(ind.get("final_score", 0) for ind in industries) / len(industries)
-        past_avg = sum(issue.get("final_score", 0) for issue in past_issues) / len(past_issues)
+        total_score = 0
+        count = 0
         
-        return round((industry_avg + past_avg) / 2, 1)
+        # 산업 점수 합산
+        if industries:
+            industry_avg = sum(ind.get("final_score", 0) for ind in industries) / len(industries)
+            total_score += industry_avg
+            count += 1
+        
+        # 과거 이슈 점수 합산  
+        if past_issues:
+            past_avg = sum(issue.get("final_score", 0) for issue in past_issues) / len(past_issues)
+            total_score += past_avg
+            count += 1
+        
+        return round(total_score / count if count > 0 else 0, 1)
     
     def _calculate_average_confidence(self, enriched_issues: List[Dict]) -> float:
         """전체 이슈들의 평균 RAG 신뢰도 계산"""
@@ -427,8 +443,9 @@ class RAGService:
         confidences = [issue.get("RAG분석신뢰도", 0.0) for issue in enriched_issues]
         return round(sum(confidences) / len(confidences), 2)
     
+    @staticmethod
     def rerank_with_llm(issue_text: str, candidates: List[str], mode: str = "industry") -> List[Dict[str, str]]:
-        """동료 원본의 간단한 LLM 재랭킹 함수 추가"""
+        """LLM을 사용한 후보 재랭킹"""
         
         load_dotenv(override=True)
         client = openai.OpenAI()
@@ -440,31 +457,31 @@ class RAGService:
             }.get(mode, "관련 항목을 선택")
 
             prompt = f"""
-    다음은 현재 뉴스 이슈입니다:
+다음은 현재 뉴스 이슈입니다:
 
-    [현재 이슈]
-    {issue_text}
+[현재 이슈]
+{issue_text}
 
-    아래는 {task_type}할 수 있는 후보 리스트입니다:
+아래는 {task_type}할 수 있는 후보 리스트입니다:
 
-    [후보 리스트]
-    {chr(10).join(f"- {cand}" for cand in candidates)}
+[후보 리스트]
+{chr(10).join(f"- {cand}" for cand in candidates)}
 
-    당신은 전문 시장분석 애널리스트입니다. 초보자들에게 현재 이슈에 대해 어떠한 관련 산업과 과거 이슈가 관련되어 있는지
-    전문적이면서 친절하게 알려주는 역할을 수행해야합니다. 당신의 과제는 이슈와 가장 밀접한 후보를 관련성 순으로 정렬하고, 각각의 이유를 설명하는 것입니다.
-    응답은 JSON 형식으로 출력해주세요. 각 항목은 name과 reason 필드를 반드시 포함해야 합니다.
+당신은 전문 시장분석 애널리스트입니다. 초보자들에게 현재 이슈에 대해 어떠한 관련 산업과 과거 이슈가 관련되어 있는지
+전문적이면서 친절하게 알려주는 역할을 수행해야합니다. 당신의 과제는 이슈와 가장 밀접한 후보를 관련성 순으로 정렬하고, 각각의 이유를 설명하는 것입니다.
+응답은 JSON 형식으로 출력해주세요. 각 항목은 name과 reason 필드를 반드시 포함해야 합니다.
 
-    [출력 예시]
-    [
-    {{
-        "name": "반도체",
-        "reason": "반도체의중요성은2018년이후미.중패권전쟁으로한층더강화되었다. 미.중패권전쟁은 처음에는무역전쟁으로시작되어현재는완전히기술패권전쟁으로전환되었는데, 그기술패권 전쟁의핵심대상이바로'반도체'다."
-    }},
-    {{
-        "name": "전자부품",
-        "reason": "앞으로 전자 부품 시장은 전자 기기에 대한 수요 증가에 힘입어 연간 성장 궤적을 계속할 것으로 예상됩니다."
-    }}
-    ]
+[출력 예시]
+[
+{{
+    "name": "반도체",
+    "reason": "반도체의중요성은2018년이후미.중패권전쟁으로한층더강화되었다. 미.중패권전쟁은 처음에는무역전쟁으로시작되어현재는완전히기술패권전쟁으로전환되었는데, 그기술패권 전쟁의핵심대상이바로'반도체'다."
+}},
+{{
+    "name": "전자부품",
+    "reason": "앞으로 전자 부품 시장은 전자 기기에 대한 수요 증가에 힘입어 연간 성장 궤적을 계속할 것으로 예상됩니다."
+}}
+]
             """
             return prompt.strip()
         
@@ -483,4 +500,4 @@ class RAGService:
             
         except Exception as e:
             print("⚠️ JSON 파싱 실패. 응답 원문:", output_text if 'output_text' in locals() else str(e))
-            raise e   
+            raise e

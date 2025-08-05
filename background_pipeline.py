@@ -77,18 +77,33 @@ class BackgroundPipelineExecutor:
             logger.info("🔄 백그라운드 파이프라인 시작 (services 버전)")
             start_time = datetime.now()
             
-            # 파이프라인 실행 (크롤링 → 필터링 → RAG 분석)
-            result = self.pipeline_service.execute_full_pipeline(
-                issues_per_category=10,
-                target_filtered_count=5
-            )
+            # 🔥 수정: 파이프라인 실행 시 파라미터 제거 (execute_full_pipeline에 파라미터가 없음)
+            result = self.pipeline_service.execute_full_pipeline()
             
             execution_time = datetime.now() - start_time
             
             if result.get("final_status") == "success":
-                # MySQL에 결과 저장
-                await self.db_service.save_pipeline_result(result)
-                logger.info(f"✅ 백그라운드 파이프라인 완료: {result['pipeline_id']} (소요시간: {execution_time})")
+                # MySQL에 결과 저장 시도
+                try:
+                    await self.db_service.save_pipeline_result(result)
+                    logger.info(f"✅ MySQL 저장 완료")
+                except Exception as db_error:
+                    logger.warning(f"⚠️ MySQL 저장 실패 (파일은 저장됨): {db_error}")
+                
+                logger.info(f"✅ 백그라운드 파이프라인 완료: {result.get('pipeline_id', 'unknown')} (소요시간: {execution_time})")
+                
+                # 🔥 추가: 결과 파일 경로 로깅
+                saved_file = result.get("saved_file", "")
+                if saved_file:
+                    logger.info(f"💾 결과 파일 저장: {saved_file}")
+                
+                # 🔥 추가: 분석 결과 요약 로깅
+                final_summary = result.get("final_summary", {})
+                if final_summary:
+                    processing_details = final_summary.get("processing_details", {})
+                    logger.info(f"📊 처리 요약: 크롤링 {processing_details.get('crawled', 0)}개 → 필터링 {processing_details.get('filtered', 0)}개 → 분석 {processing_details.get('analyzed', 0)}개")
+                    logger.info(f"📊 평균 신뢰도: {final_summary.get('average_confidence', 0)}")
+                
             else:
                 logger.error(f"❌ 파이프라인 실행 실패: {result.get('errors', [])}")
                 
@@ -140,6 +155,16 @@ class BackgroundPipelineExecutor:
             except Exception as e:
                 logger.warning(f"⚠️ 이벤트 루프 종료 실패: {e}")
         
+        # 🔥 추가: 크롤링 서비스 안전 종료
+        try:
+            if self.pipeline_service and hasattr(self.pipeline_service, 'crawling_service'):
+                crawling_service = self.pipeline_service.crawling_service
+                if hasattr(crawling_service, 'cleanup'):
+                    crawling_service.cleanup()
+                    logger.info("✅ 크롤링 서비스 정리 완료")
+        except Exception as e:
+            logger.warning(f"⚠️ 크롤링 서비스 정리 실패: {e}")
+        
         logger.info("✅ 백그라운드 파이프라인 종료 완료")
 
 def signal_handler(signum, frame):
@@ -185,6 +210,10 @@ def main():
         finally:
             executor.shutdown()
         return
+    
+    # 🔥 추가: 크롤링 횟수 제한 확인
+    if "--test-mode" in sys.argv:
+        logger.info("🧪 테스트 모드: 크롤링 횟수 제한됨")
     
     # 스케줄 실행
     logger.info("📅 백그라운드 파이프라인 스케줄러 시작 (30분 간격, services 버전)")

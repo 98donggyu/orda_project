@@ -1,4 +1,4 @@
-# main.py - lifespan 이벤트로 수정된 버전
+# main.py - lifespan 이벤트로 수정된 버전 (파라미터 수정)
 import uvicorn
 import asyncio
 import threading
@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # config 및 api, services 임포트
 from config import API_TITLE, API_VERSION, API_DESCRIPTION, CORS_ALLOW_ORIGINS
-from api import health_api, analysis_api, database_api, news_api, simulation_api
+from api import health_api, analysis_api, database_api, news_api, simulation_api, pipeline_api
 from services import database_service
 
 # 백그라운드 파이프라인 import
@@ -113,19 +113,20 @@ app.add_middleware(
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# API 라우터 등록
+# 🔥 수정: pipeline_api 라우터 추가
 app.include_router(health_api.router, tags=["Health Check"])
 app.include_router(news_api.router, prefix="/api/news", tags=["News"])
 app.include_router(analysis_api.router, prefix="/api/analysis", tags=["Analysis"])
 app.include_router(simulation_api.router, prefix="/api/simulation", tags=["Simulation"])
 app.include_router(database_api.router, prefix="/api/database", tags=["Database"])
+app.include_router(pipeline_api.router, prefix="/api/pipeline", tags=["Pipeline"])  # 추가
 
 # 루트 경로를 메인 페이지로 리디렉션
 @app.get("/")
 async def root():
     return RedirectResponse(url="/static/index.html")
 
-# 수동 파이프라인 트리거 API
+# 🔥 개선된 수동 파이프라인 트리거 API
 @app.post("/api/pipeline/trigger")
 async def trigger_pipeline_manually():
     """수동으로 파이프라인을 즉시 실행합니다."""
@@ -146,14 +147,19 @@ async def trigger_pipeline_manually():
     try:
         # 별도 스레드에서 실행 (API 응답 지연 방지)
         def run_async():
-            pipeline_executor.run_once()
+            try:
+                pipeline_executor.run_once()
+                print("✅ 수동 파이프라인 실행 완료")
+            except Exception as e:
+                print(f"❌ 수동 파이프라인 실행 실패: {e}")
         
         threading.Thread(target=run_async, daemon=True).start()
         
         return {
             "success": True,
             "message": "백그라운드 파이프라인이 수동으로 시작되었습니다.",
-            "estimated_time": "약 5-10분 소요 예상"
+            "estimated_time": "약 5-10분 소요 예상",
+            "status": "백그라운드에서 실행 중..."
         }
         
     except Exception as e:
@@ -178,9 +184,14 @@ async def get_pipeline_status():
         }
     
     try:
-        # 최근 파이프라인 실행 로그 조회 (데이터베이스에서)
-        db_service = database_service.get_database_service()
-        latest_log = db_service.get_latest_pipeline_log()
+        # 🔥 수정: 안전한 데이터베이스 서비스 접근
+        latest_log = None
+        try:
+            db_service = database_service.get_database_service()
+            if db_service and hasattr(db_service, 'get_latest_pipeline_log'):
+                latest_log = db_service.get_latest_pipeline_log()
+        except Exception as db_error:
+            print(f"⚠️ 데이터베이스 로그 조회 실패: {db_error}")
         
         return {
             "success": True,
@@ -189,7 +200,8 @@ async def get_pipeline_status():
                 "is_running": pipeline_executor.is_running,
                 "latest_execution": latest_log,
                 "schedule": "30분마다 자동 실행",
-                "manual_trigger_available": not pipeline_executor.is_running
+                "manual_trigger_available": not pipeline_executor.is_running,
+                "executor_type": "BackgroundPipelineExecutor"
             }
         }
         

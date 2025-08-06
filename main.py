@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- 설정, API 라우터, 서비스 임포트 ---
@@ -134,6 +134,11 @@ app.mount("/static", StaticFiles(directory=static_dir, html=True), name="static"
 @app.get("/")
 async def root():
     return RedirectResponse(url="/static/index.html")
+
+@app.get("/game", response_class=FileResponse, include_in_schema=False)
+async def serve_game():
+    """Game 메뉴 클릭 시 game.html 파일을 서비스하는 라우트"""
+    return "static/game.html"
 
 # --- 서버 실행 ---
 if __name__ == "__main__":

@@ -97,7 +97,7 @@
                 <div class="nav-item" onclick="navigateTo('news')"> <span class="nav-icon">📰</span> <span>News</span> </div>
                 <div class="nav-item" onclick="navigateTo('sector')"> <span class="nav-icon">🏭</span> <span>Sector</span> </div>
                 <div class="nav-item" onclick="navigateTo('company')"> <span class="nav-icon">🏢</span> <span>Company</span> </div>
-                <div class="nav-item" onclick="navigateTo('marble_game')"> <span class="nav-icon">📈</span> <span>Game</span> </div>
+                <div class="nav-item" onclick="navigateTo('game')"> <span class="nav-icon">📈</span> <span>Game</span> </div>
             </div>
         </div>
         
@@ -419,7 +419,19 @@
 
         function closeAIAnalysisModal() { document.getElementById('ai-analysis-modal').classList.remove('show'); }
         function setupRefreshButton() { document.getElementById('refresh-issues-btn')?.addEventListener('click', loadCurrentIssues); }
-        function navigateTo(page) { const pages = { news: '/static/news.html', sector: '/static/sector.html' }; if (pages[page]) window.location.href = pages[page]; }
+        function navigateTo(page) {
+            const pages = {
+                home: '/index.html',        // 또는 '/'
+                news: '/static/news.html',
+                sector: '/static/sector.html',
+                company: '/static/company.html',
+                game: '/static/game.html'    // 게임 페이지 추가
+            };
+            
+            if (pages[page]) {
+                window.location.href = pages[page];
+            }
+        }
         function showNotification(message, type = 'info') { const colors = { success: '#4CAF50', warning: '#ff9800', error: '#f44336', info: '#2196F3' }; const notification = document.createElement('div'); notification.style.cssText = `position:fixed;top:20px;right:20px;background:${colors[type]||colors.info};color:white;padding:15px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;font-weight:500;`; notification.innerHTML = `<div><span>${message}</span><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:white;font-size:18px;cursor:pointer;margin-left:15px;">×</button></div>`; document.body.appendChild(notification); setTimeout(() => { if (notification.parentElement) notification.remove(); }, 5000); }
         
         // ===================================================================

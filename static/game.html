@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>오르다 - 금융 게임</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8f9fa; color: #333; }
+        
+        /* 레이아웃 (index.html과 동일) */
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 260px; background: white; border-right: 1px solid #e9ecef; box-shadow: 2px 0 10px rgba(0,0,0,0.05); }
+        .logo-section { background: linear-gradient(135deg, #FF6B6B 0%, #FF5252 100%); color: white; padding: 1.5rem; text-align: center; }
+        .logo { font-size: 1.8rem; font-weight: bold; margin-bottom: 0.5rem; }
+        .logo-subtitle { font-size: 0.9rem; opacity: 0.9; }
+        .nav-menu { padding: 1.5rem 0; }
+        .nav-item { padding: 1rem 1.5rem; cursor: pointer; transition: all 0.3s ease; border-left: 4px solid transparent; display: flex; align-items: center; gap: 0.8rem; }
+        .nav-item:hover { background-color: #f8f9fa; border-left-color: #FF6B6B; }
+        .nav-item.active { background-color: #fff3f3; border-left-color: #FF6B6B; color: #FF6B6B; font-weight: 600; }
+        .nav-icon { font-size: 1.1rem; width: 20px; }
+        .main-content { flex: 1; padding: 2rem; overflow-y: auto; }
+        
+        /* 게임 페이지 헤더 */
+        .page-header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            border-radius: 20px; 
+            padding: 3rem; 
+            margin-bottom: 2rem; 
+            color: white; 
+            text-align: center; 
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+        .page-title { 
+            font-size: 3rem; 
+            font-weight: 700; 
+            margin-bottom: 1rem; 
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+        .page-subtitle { 
+            font-size: 1.2rem; 
+            opacity: 0.95; 
+            line-height: 1.6; 
+        }
+        
+        /* 게임 선택 카드 */
+        .games-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .game-card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .game-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        
+        .game-card-header {
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .game-card:nth-child(1) .game-card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .game-card:nth-child(2) .game-card-header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .game-card-body {
+            padding: 2rem;
+        }
+        
+        .game-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        
+        .game-description {
+            color: #6c757d;
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+        
+        .game-features {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .feature-tag {
+            background: #f0f4ff;
+            color: #667eea;
+            padding: 0.3rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .play-button {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .play-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(56, 239, 125, 0.4);
+        }
+        
+        .coming-soon {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: #ffc107;
+            color: #333;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 3px 10px rgba(255, 193, 7, 0.3);
+        }
+        
+        /* 게임 통계 */
+        .stats-section {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+        
+        .stats-title {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 1.5rem;
+            color: #2c3e50;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 1.5rem;
+            background: linear-gradient(145deg, #f8f9fa, #ffffff);
+            border-radius: 15px;
+            border: 2px solid #e9ecef;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.95rem;
+        }
+        
+        /* 게임 모달 컨테이너 */
+        #game-modal-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 10000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        #game-modal-container.show {
+            display: flex;
+        }
+        
+        #game-iframe {
+            width: 100%;
+            height: 100%;
+            max-width: 800px;
+            max-height: 800px;
+            border: none;
+            border-radius: 20px;
+            background: white;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        
+        .close-game-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10001;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        }
+        
+        .close-game-btn:hover {
+            background: #ff5252;
+            color: white;
+            transform: rotate(90deg);
+        }
+        
+        /* 반응형 */
+        @media (max-width: 768px) {
+            .layout { flex-direction: column; }
+            .sidebar { width: 100%; order: 2; }
+            .main-content { order: 1; padding: 1rem; }
+            .games-container { grid-template-columns: 1fr; }
+            .page-title { font-size: 2rem; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <!-- 사이드바 -->
+        <div class="sidebar">
+            <div class="logo-section">
+                <div class="logo">오르다</div>
+                <div class="logo-subtitle">투자 학습 플랫폼</div>
+            </div>
+            <div class="nav-menu">
+                <div class="nav-item" onclick="navigateTo('home')">
+                    <span class="nav-icon">🏠</span>
+                    <span>Home</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('news')">
+                    <span class="nav-icon">📰</span>
+                    <span>News</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('sector')">
+                    <span class="nav-icon">🏭</span>
+                    <span>Sector</span>
+                </div>
+                <div class="nav-item" onclick="navigateTo('company')">
+                    <span class="nav-icon">🏢</span>
+                    <span>Company</span>
+                </div>
+                <div class="nav-item active" onclick="navigateTo('game')">
+                    <span class="nav-icon">🎮</span>
+                    <span>Game</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 메인 컨텐츠 -->
+        <div class="main-content">
+            <!-- 페이지 헤더 -->
+            <div class="page-header">
+                <h1 class="page-title">🎮 금융 마스터 게임</h1>
+                <p class="page-subtitle">
+                    재미있는 게임으로 금융 용어와 투자 전략을 배워보세요!<br>
+                    AI 시뮬레이션과 보드게임으로 실전 감각을 키워보세요.
+                </p>
+            </div>
+            
+            <!-- 게임 선택 카드 -->
+            <div class="games-container">
+                <!-- 금융 블루마블 게임 -->
+                <div class="game-card" onclick="playGame('bluemarble')">
+                    <div class="game-card-header">
+                        💰
+                    </div>
+                    <div class="game-card-body">
+                        <h3 class="game-title">금융 마스터 블루마블</h3>
+                        <p class="game-description">
+                            블루마블 형식의 보드게임으로 금융 용어를 학습하세요! 
+                            주사위를 굴려 보드를 돌며 퀴즈를 풀고 건물을 건설하여 
+                            금융 지식을 쌓아보세요.
+                        </p>
+                        <div class="game-features">
+                            <span class="feature-tag">2인 플레이</span>
+                            <span class="feature-tag">금융 퀴즈</span>
+                            <span class="feature-tag">건물 건설</span>
+                        </div>
+                        <button class="play-button">
+                            🎲 게임 시작하기
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- AI 투자 시뮬레이션 -->
+                <div class="game-card" onclick="playGame('simulation')">
+                    <div class="game-card-header">
+                        🤖
+                    </div>
+                    <div class="game-card-body">
+                        <h3 class="game-title">AI 투자 시뮬레이션</h3>
+                        <p class="game-description">
+                            과거 실제 이슈를 바탕으로 투자 시뮬레이션을 체험하세요! 
+                            AI가 분석한 산업과 종목에 투자하고, 실제 주가 데이터로 
+                            결과를 확인해보세요.
+                        </p>
+                        <div class="game-features">
+                            <span class="feature-tag">AI 분석</span>
+                            <span class="feature-tag">실제 데이터</span>
+                            <span class="feature-tag">투자 체험</span>
+                            <span class="feature-tag">성과 분석</span>
+                        </div>
+                        <button class="play-button">
+                            📈 시뮬레이션 시작
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 추가 게임 (준비중) -->
+                <div class="game-card" style="opacity: 0.7; cursor: not-allowed;">
+                    <div class="coming-soon">Coming Soon</div>
+                    <div class="game-card-header" style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);">
+                        🎯
+                    </div>
+                    <div class="game-card-body">
+                        <h3 class="game-title">가짜 뉴스 판별 게임</h3>
+                        <p class="game-description">
+                            가짜 뉴스와 진짜 뉴스를 구별하는 게임입니다. 
+                            다양한 뉴스 기사를 읽고, 진위를 판단하여 금융 지식을 
+                            높여보세요.
+                        </p>
+                        <div class="game-features">
+                            <span class="feature-tag"></span>
+                            <span class="feature-tag"></span>
+                            <span class="feature-tag">난이도 선택</span>
+                        </div>
+                        <button class="play-button" disabled style="opacity: 0.5;">
+                            🔒 준비중
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 게임 모달 컨테이너 -->
+    <div id="game-modal-container">
+        <button class="close-game-btn" onclick="closeGame()">✕</button>
+        <iframe id="game-iframe"></iframe>
+    </div>
+    
+    <script>
+        // 네비게이션
+        function navigateTo(page) {
+            const pages = {
+                home: '/static/index.html',
+                news: '/static/news.html',
+                sector: '/static/sector.html',
+                company: '/static/company.html',
+                game: '/static/game.html'
+            };
+            
+            if (pages[page]) {
+                window.location.href = pages[page];
+            }
+        }
+        
+        // 게임 실행
+        function playGame(gameType) {
+            const gameModal = document.getElementById('game-modal-container');
+            const gameIframe = document.getElementById('game-iframe');
+            
+            if (gameType === 'bluemarble') {
+                // 블루마블 게임 HTML을 iframe에 로드
+                gameIframe.src = '/static/bluemarble_game.html';
+                gameModal.classList.add('show');
+                
+                // 통계 업데이트 (localStorage 활용)
+                updatePlayCount();
+                
+            } else if (gameType === 'simulation') {
+                // 시뮬레이션 게임은 별도 페이지로 이동하거나 모달로 실행
+                alert('AI 투자 시뮬레이션은 뉴스 페이지에서 이슈를 선택하여 실행할 수 있습니다.');
+                navigateTo('home');
+            }
+        }
+        
+        // 게임 닫기
+        function closeGame() {
+            const gameModal = document.getElementById('game-modal-container');
+            const gameIframe = document.getElementById('game-iframe');
+            
+            gameModal.classList.remove('show');
+            gameIframe.src = '';
+            
+            // 통계 저장
+            saveGameStats();
+        }
+        
+        // ESC 키로 게임 닫기
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const gameModal = document.getElementById('game-modal-container');
+                if (gameModal.classList.contains('show')) {
+                    closeGame();
+                }
+            }
+        });
+        
+        // 통계 관련 함수
+        function updatePlayCount() {
+            let playCount = parseInt(localStorage.getItem('gamePlayCount') || '0');
+            playCount++;
+            localStorage.setItem('gamePlayCount', playCount);
+            loadStats();
+        }
+        
+        function saveGameStats() {
+            // 게임 종료 시 통계 저장 로직
+            // iframe 내부와 통신하여 점수 등을 받아올 수 있음
+        }
+        
+        function loadStats() {
+            // localStorage에서 통계 불러오기
+            const playCount = localStorage.getItem('gamePlayCount') || '0';
+            const highScore = localStorage.getItem('gameHighScore') || '0';
+            const avgAccuracy = localStorage.getItem('gameAvgAccuracy') || '0';
+            const badges = localStorage.getItem('gameBadges') || '0';
+            
+            // 통계 표시 업데이트
+            const statValues = document.querySelectorAll('.stat-value');
+            if (statValues[0]) statValues[0].textContent = playCount;
+            if (statValues[1]) statValues[1].textContent = highScore;
+            if (statValues[2]) statValues[2].textContent = avgAccuracy + '%';
+            if (statValues[3]) statValues[3].textContent = '🏆 ' + badges;
+        }
+        
+        // 페이지 로드 시 통계 불러오기
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+        });
+        
+        // iframe과의 메시지 통신 (게임 결과 받기)
+        window.addEventListener('message', function(e) {
+            if (e.data.type === 'gameResult') {
+                // 게임 결과 처리
+                const score = e.data.score;
+                const accuracy = e.data.accuracy;
+                
+                // 최고 점수 업데이트
+                const currentHighScore = parseInt(localStorage.getItem('gameHighScore') || '0');
+                if (score > currentHighScore) {
+                    localStorage.setItem('gameHighScore', score);
+                }
+                
+                // 평균 정답률 업데이트
+                const currentAvg = parseFloat(localStorage.getItem('gameAvgAccuracy') || '0');
+                const playCount = parseInt(localStorage.getItem('gamePlayCount') || '1');
+                const newAvg = ((currentAvg * (playCount - 1)) + accuracy) / playCount;
+                localStorage.setItem('gameAvgAccuracy', newAvg.toFixed(1));
+                
+                loadStats();
+            }
+        });
+    </script>
+</body>
+</html>

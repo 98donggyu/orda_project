@@ -22,7 +22,7 @@
         .welcome-text { color: #6c757d; font-size: 1.1rem; margin-bottom: 0.5rem; }
         .page-title { font-size: 2.5rem; font-weight: 700; color: #2c3e50; margin-bottom: 1rem; }
         .page-subtitle { color: #6c757d; font-size: 1.1rem; line-height: 1.6; }
-        .today-date { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 0.8rem 1.5rem; border-radius: 25px; display: inline-block; margin-top: 1rem; font-weight: 600; }
+        .today-date { background: linear-gradient(135deg, #FF6B6B 0%, #FF5252 100%); color: white; padding: 0.8rem 1.5rem; border-radius: 25px; display: inline-block; margin-top: 1rem; font-weight: 600; }
         .issues-section { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
         .section-title { font-size: 1.5rem; font-weight: 600; color: #2c3e50; display: flex; align-items: center; gap: 0.5rem; }
@@ -80,6 +80,20 @@
         .verification-result { border-radius: 6px; margin: 0.5rem 0; transition: all 0.2s; }
         .simulation-btn { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 0.3rem; font-weight: 600; }
         .simulation-btn:hover { transform: translateY(-2px) scale(1.05); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        .issue-bookmark {
+            font-size: 1.8rem; /* 별 아이콘 크기 */
+            color: #ced4da; /* 기본 빈 별 색상 */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .issue-bookmark:hover {
+            transform: scale(1.2); /* 마우스 올리면 살짝 커지게 */
+        }
+
+        .issue-bookmark.bookmarked {
+            color: #FFC107; /* 북마크된 별 색상 (노란색) */
+        }
         @media (max-width: 1024px) { .issues-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } .modal-grid { grid-template-columns: 1fr; } }
         @media (max-width: 768px) { .layout { flex-direction: column; } .sidebar { width: 100%; order: 2; } .main-content { order: 1; padding: 1rem; } .issues-grid { grid-template-columns: 1fr; } .page-title { font-size: 2rem; } .modal-content { margin: 1rem; padding: 1.5rem; } .modal-grid { grid-template-columns: 1fr; gap: 1rem; } }
     </style>
@@ -93,11 +107,12 @@
                 <div class="logo-subtitle">투자 학습 플랫폼</div>
             </div>
             <div class="nav-menu">
-                <div class="nav-item active" onclick="navigateTo('home')"> <span class="nav-icon">🏠</span> <span>Home</span> </div>
-                <div class="nav-item" onclick="navigateTo('news')"> <span class="nav-icon">📰</span> <span>News</span> </div>
-                <div class="nav-item" onclick="navigateTo('sector')"> <span class="nav-icon">🏭</span> <span>Sector</span> </div>
-                <div class="nav-item" onclick="navigateTo('company')"> <span class="nav-icon">🏢</span> <span>Company</span> </div>
-                <div class="nav-item" onclick="navigateTo('game')"> <span class="nav-icon">📈</span> <span>Game</span> </div>
+                <div class="nav-item active" onclick="navigateTo('home')"> <span class="nav-icon"></span> <span>Home</span> </div>
+                <div class="nav-item" onclick="navigateTo('mypage')"> <span class="nav-icon"></span> <span>My Page</span> </div>
+                <div class="nav-item" onclick="navigateTo('news')"> <span class="nav-icon"></span> <span>News</span> </div>
+                <div class="nav-item" onclick="navigateTo('sector')"> <span class="nav-icon"></span> <span>Sector</span> </div>
+                <div class="nav-item" onclick="navigateTo('company')"> <span class="nav-icon"></span> <span>Company</span> </div>
+                <div class="nav-item" onclick="navigateTo('game')"> <span class="nav-icon"></span> <span>Game</span> </div>
             </div>
         </div>
         
@@ -112,15 +127,15 @@
             <div class="status-bar">
                 <div class="status-info">
                     <div class="status-item"> <div class="status-indicator"></div> <span>AI 필터링 활성화</span> </div>
-                    <div class="status-item"> <span>📅 마지막 업데이트: <span id="last-update-time"></span></span> </div>
-                    <div class="status-item"> <span>📊 AI 선별 <span id="issue-count">0</span>개 이슈</span> </div>
+                    <div class="status-item"> <span> 마지막 업데이트: <span id="last-update-time"></span></span> </div>
+                    <div class="status-item"> <span> AI 선별 <span id="issue-count">0</span>개 이슈</span> </div>
                 </div>
-                <button id="refresh-issues-btn" style="padding: 0.5rem 1rem; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;"> 🔄 새로고침 </button>
+                <button id="refresh-issues-btn" style="padding: 0.5rem 1rem; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;">  새로고침 </button>
             </div>
             
             <div class="issues-section">
                 <div class="section-header">
-                    <h2 class="section-title"> 🎯 AI 선별 주요 이슈 (<span id="grid-issue-count">0</span>개) </h2>
+                    <h2 class="section-title">  AI 선별 주요 이슈 (<span id="grid-issue-count">0</span>개) </h2>
                 </div>
                 <div class="issues-grid" id="issues-grid">
                     <div class="loading" id="loading-state">
@@ -136,28 +151,28 @@
             <button onclick="closeAIAnalysisModal()" class="modal-close-btn">&times;</button>
             <h2 id="modal-issue-title" class="modal-title"></h2>
             <div class="modal-score-section">
-                <div> <strong>📊 주식시장 관련성 점수: <span id="score-value"></span>/10</strong> <button onclick="toggleScoreBreakdown()" style="margin-left: 10px; padding: 4px 8px; background: #e3f2fd; border: 1px solid #2196F3; border-radius: 4px; cursor: pointer; font-size: 0.8rem;">📋 세부점수</button> </div>
-                <div> <span style="color:#666;">🔍 RAG 분석 신뢰도: <span id="rag-confidence"></span></span> </div>
+                <div> <strong> 주식시장 관련성 점수: <span id="score-value"></span>/10</strong> <button onclick="toggleScoreBreakdown()" style="margin-left: 10px; padding: 4px 8px; background: #e3f2fd; border: 1px solid #2196F3; border-radius: 4px; cursor: pointer; font-size: 0.8rem;"> 세부점수</button> </div>
+                <div> <span style="color:#666;"> RAG 분석 신뢰도: <span id="rag-confidence"></span></span> </div>
             </div>
             <div id="score-breakdown-section" class="modal-content-section" style="display: none;">
-                <h3 class="modal-content-title">📊 AI 채점 근거 및 세부 점수</h3>
+                <h3 class="modal-content-title"> AI 채점 근거 및 세부 점수</h3>
                 <div id="score-breakdown-content" class="modal-content-box" style="max-height: 300px;">
                     <div class="score-breakdown-grid">
-                        <div class="score-item"> <div class="score-label">🏢 직접적 기업영향</div> <div class="score-value-box"> <span id="direct-company-score"></span>/10 <div id="direct-company-reason" class="score-reason"></div> </div> </div>
+                        <div class="score-item"> <div class="score-label"> 직접적 기업영향</div> <div class="score-value-box"> <span id="direct-company-score"></span>/10 <div id="direct-company-reason" class="score-reason"></div> </div> </div>
                         <div class="score-item"> <div class="score-label">🏛️ 정책적 영향</div> <div class="score-value-box"> <span id="policy-score"></span>/10 <div id="policy-reason" class="score-reason"></div> </div> </div>
-                        <div class="score-item"> <div class="score-label">💭 시장 심리</div> <div class="score-value-box"> <span id="market-sentiment-score"></span>/10 <div id="market-sentiment-reason" class="score-reason"></div> </div> </div>
-                        <div class="score-item"> <div class="score-label">🌍 거시경제</div> <div class="score-value-box"> <span id="macro-economic-score"></span>/10 <div id="macro-economic-reason" class="score-reason"></div> </div> </div>
-                        <div class="score-item"> <div class="score-label">📈 산업 트렌드</div> <div class="score-value-box"> <span id="industry-trend-score"></span>/10 <div id="industry-trend-reason" class="score-reason"></div> </div> </div>
-                        <div class="score-item"> <div class="score-label">🎯 종합 계산</div> <div class="score-value-box"> <span id="total-calculation"></span> <div id="calculation-method" class="score-reason"></div> </div> </div>
+                        <div class="score-item"> <div class="score-label"> 시장 심리</div> <div class="score-value-box"> <span id="market-sentiment-score"></span>/10 <div id="market-sentiment-reason" class="score-reason"></div> </div> </div>
+                        <div class="score-item"> <div class="score-label"> 거시경제</div> <div class="score-value-box"> <span id="macro-economic-score"></span>/10 <div id="macro-economic-reason" class="score-reason"></div> </div> </div>
+                        <div class="score-item"> <div class="score-label"> 산업 트렌드</div> <div class="score-value-box"> <span id="industry-trend-score"></span>/10 <div id="industry-trend-reason" class="score-reason"></div> </div> </div>
+                        <div class="score-item"> <div class="score-label"> 종합 계산</div> <div class="score-value-box"> <span id="total-calculation"></span> <div id="calculation-method" class="score-reason"></div> </div> </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-content-section"> <h3 class="modal-content-title">📝 원본 이슈 내용</h3> <div id="modal-issue-content" class="modal-content-box"></div> </div>
+            <div class="modal-content-section"> <h3 class="modal-content-title"> 원본 이슈 내용</h3> <div id="modal-issue-content" class="modal-content-box"></div> </div>
             <div class="modal-grid">
-                <div class="modal-section"> <h3 class="modal-section-title industries">🏭 관련 산업 (RAG 분석)</h3> <div id="modal-related-industries" class="modal-highlight-box industries"></div> </div>
-                <div class="modal-section"> <h3 class="modal-section-title past-issues">📚 관련 과거 이슈 (RAG 분석)</h3> <div id="modal-related-past-issues" class="modal-highlight-box past-issues"></div> </div>
+                <div class="modal-section"> <h3 class="modal-section-title industries"> 관련 산업 (RAG 분석)</h3> <div id="modal-related-industries" class="modal-highlight-box industries"></div> </div>
+                <div class="modal-section"> <h3 class="modal-section-title past-issues"> 관련 과거 이슈 (RAG 분석)</h3> <div id="modal-related-past-issues" class="modal-highlight-box past-issues"></div> </div>
             </div>
-            <div class="modal-section"> <h3 class="modal-section-title summary">🔍 RAG 분석 요약</h3> <div id="modal-rag-summary" class="modal-highlight-box summary"></div> </div>
+            <div class="modal-section"> <h3 class="modal-section-title summary"> RAG 분석 요약</h3> <div id="modal-rag-summary" class="modal-highlight-box summary"></div> </div>
             <div class="modal-footer"> <strong>분석 정보:</strong> <span>벡터 유사도 검색 + GPT-4o AI 분석</span> | <span>Pinecone 벡터DB 활용</span> | <span id="analysis-timestamp"></span> </div>
         </div>
     </div>
@@ -199,14 +214,14 @@
             isRefreshing = true;
             const loadingEl = document.getElementById('loading-state');
             loadingEl.style.display = 'block';
-            loadingEl.innerHTML = `<div style="text-align: center; padding: 2rem;"><div class="spinner"></div><p>🤖 AI가 선별한 이슈를 불러오는 중...</p></div>`;
+            loadingEl.innerHTML = `<div style="text-align: center; padding: 2rem;"><div class="spinner"></div><p> AI가 선별한 이슈를 불러오는 중...</p></div>`;
 
             try {
                 const response = await fetch('/api/news/latest');
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
                 const result = await response.json();
-                console.log('📊 API 응답 데이터:', result);
+                console.log(' API 응답 데이터:', result);
 
                 let issuesData = [];
                 if (result && Array.isArray(result.selected_issues)) {
@@ -229,12 +244,12 @@
                 
                 displayIssues(currentIssues);
                 updateIssueCounts(currentIssues.length);
-                showNotification(`✅ AI가 선별한 ${currentIssues.length}개 핵심 이슈를 가져왔습니다!`, 'success');
+                showNotification(` AI가 선별한 ${currentIssues.length}개 핵심 이슈를 가져왔습니다!`, 'success');
 
             } catch (error) {
-                console.error('❌ API 호출 또는 데이터 처리 실패:', error);
-                loadingEl.innerHTML = `<div style="text-align: center; padding: 2rem;"><p style="color: #dc3545; margin-bottom: 1rem;">⚠️ 데이터를 불러올 수 없습니다.</p><button onclick="loadCurrentIssues()" style="background: #FF6B6B; color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 8px; cursor: pointer;">🔄 다시 시도</button></div>`;
-                showNotification('❌ 데이터를 불러오는데 실패했습니다. 다시 시도해주세요.', 'error');
+                console.error(' API 호출 또는 데이터 처리 실패:', error);
+                loadingEl.innerHTML = `<div style="text-align: center; padding: 2rem;"><p style="color: #dc3545; margin-bottom: 1rem;">⚠️ 데이터를 불러올 수 없습니다.</p><button onclick="loadCurrentIssues()" style="background: #FF6B6B; color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 8px; cursor: pointer;"> 다시 시도</button></div>`;
+                showNotification(' 데이터를 불러오는데 실패했습니다. 다시 시도해주세요.', 'error');
             } finally {
                 isRefreshing = false;
                 loadingEl.style.display = 'none';
@@ -249,24 +264,65 @@
             const grid = document.getElementById('issues-grid');
             if (!grid) return;
             grid.innerHTML = '';
+
+            // mypage.html에서 사용할 북마크 정보를 localStorage에서 가져옵니다.
+            const bookmarkedIssues = JSON.parse(localStorage.getItem('bookmarkedIssues')) || [];
+
             issues.forEach((issue, index) => {
                 const card = document.createElement('div');
                 card.className = 'issue-card';
+                
                 const score = parseFloat(normalizeStockRelevanceScore(issue.종합점수));
                 const scoreColor = score < 5 ? '#dc3545' : score < 7 ? '#ffc107' : '#28a745';
+
+                // 북마크 여부를 확인합니다. (여기서는 제목을 고유 ID처럼 사용)
+                const isBookmarked = bookmarkedIssues.some(b => b.제목 === issue.제목);
+
+                // --- ▼▼▼ 여기가 요청대로 수정된 부분입니다 ▼▼▼ ---
                 card.innerHTML = `
                     <div class="issue-header">
-                        <div class="issue-rank">TOP ${issue.ranking}</div>
                         <div class="issue-number" style="background: ${scoreColor}; color: white;">${score.toFixed(1)}/10</div>
+                        
+                        <div class="issue-bookmark ${isBookmarked ? 'bookmarked' : ''}" onclick="bookmarkIssue(this, ${index})">
+                            ${isBookmarked ? '★' : '☆'}
+                        </div>
                     </div>
                     <div class="issue-title">${issue.제목 || '제목 없음'}</div>
                     <div class="issue-content">${(issue.내용 || '').substring(0, 150)}...</div>
                     <div class="issue-footer"> 
-                        <button class="analyze-btn" onclick="showAIAnalysisModal(${index})">🤖 AI 분석 보기</button>
-                        <button class="bookmark-btn" onclick="bookmarkIssue(${index})">⭐ 저장</button>
+                        <button class="analyze-btn" onclick="showAIAnalysisModal(${index})">AI 분석 보기</button>
                     </div>`;
+
                 grid.appendChild(card);
             });
+        }
+        
+        function bookmarkIssue(element, issueIndex) {
+            // 이벤트 버블링을 막아, 별을 눌렀을 때 카드 전체가 눌리는 것을 방지합니다.
+            event.stopPropagation(); 
+
+            const issueToBookmark = currentIssues[issueIndex];
+            let bookmarkedIssues = JSON.parse(localStorage.getItem('bookmarkedIssues')) || [];
+
+            // 이미 북마크된 이슈인지 확인합니다.
+            const existingIndex = bookmarkedIssues.findIndex(b => b.제목 === issueToBookmark.제목);
+
+            if (existingIndex > -1) {
+                // 이미 북마크 되어있다면 -> 북마크 해제
+                bookmarkedIssues.splice(existingIndex, 1); // 배열에서 제거
+                element.innerHTML = '☆'; // 빈 별로 변경
+                element.classList.remove('bookmarked');
+                showNotification(`'${issueToBookmark.제목}' 북마크를 해제했습니다.`, 'info');
+            } else {
+                // 북마크 되어있지 않다면 -> 북마크 추가
+                bookmarkedIssues.push(issueToBookmark); // 배열에 추가
+                element.innerHTML = '★'; // 채워진 별로 변경
+                element.classList.add('bookmarked');
+                showNotification(`'${issueToBookmark.제목}' 이슈를 저장했습니다!`, 'success');
+            }
+
+            // 변경된 북마크 목록을 localStorage에 다시 저장합니다.
+            localStorage.setItem('bookmarkedIssues', JSON.stringify(bookmarkedIssues));
         }
 
         function showAIAnalysisModal(issueIndex) {
@@ -343,7 +399,7 @@
                 industriesDiv.innerHTML = relatedIndustries.map((industry, idx) => {
                     const verification = industry.verification || {};
                     const isVerified = verification.is_grounded === true;
-                    const verificationIcon = isVerified ? '✅' : '⚠️';
+                    const verificationIcon = isVerified ? '' : '⚠️';
                     const verificationText = isVerified ? '팩트체킹 통과' : '근거 부족';
                     const verificationColor = isVerified ? '#28a745' : '#ffc107';
                     const supportingQuote = verification.supporting_quote || '';
@@ -382,17 +438,17 @@
             const trustInfo = getTrustLevelInfo(totalVerified, totalItems, consistency, peak);
 
             summaryDiv.innerHTML = `
-                <div style="line-height:1.6;"><h4 style="margin-bottom:1rem;color:#333;">🔍 RAG 분석 요약</h4>
+                <div style="line-height:1.6;"><h4 style="margin-bottom:1rem;color:#333;"> RAG 분석 요약</h4>
                 <div style="background:#f8f9fa;padding:1rem;border-radius:6px;margin-bottom:1rem;">
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-                        <div><strong>📊 신뢰도 지표</strong><br>• 일관성: ${consistency}/10<br>• 최고연관도: ${peak}/10</div>
-                        <div><strong>✅ 팩트체킹</strong><br>• 검증 통과: ${totalVerified}/${totalItems||'N/A'} 개<br>• 성공률: ${totalItems>0?Math.round(totalVerified/totalItems*100):0}%</div>
+                        <div><strong> 신뢰도 지표</strong><br>• 일관성: ${consistency}/10<br>• 최고연관도: ${peak}/10</div>
+                        <div><strong> 팩트체킹</strong><br>• 검증 통과: ${totalVerified}/${totalItems||'N/A'} 개<br>• 성공률: ${totalItems>0?Math.round(totalVerified/totalItems*100):0}%</div>
                     </div>
                 </div>
-                <div style="margin-bottom:1rem;"><strong>🏭 산업 분석:</strong> ${industries.length}개 발견, ${iVerified}개 팩트체킹 통과</div>
-                <div style="margin-bottom:1rem;"><strong>📚 과거 이슈:</strong> ${pastIssues.length}개 발견, ${pVerified}개 팩트체킹 통과</div>
+                <div style="margin-bottom:1rem;"><strong> 산업 분석:</strong> ${industries.length}개 발견, ${iVerified}개 팩트체킹 통과</div>
+                <div style="margin-bottom:1rem;"><strong> 과거 이슈:</strong> ${pastIssues.length}개 발견, ${pVerified}개 팩트체킹 통과</div>
                 <div style="background:${trustInfo.color.bg};padding:0.8rem;border-radius:6px;border-left:4px solid ${trustInfo.color.border};">
-                    <strong>💡 종합 판단:</strong> ${trustInfo.message}
+                    <strong> 종합 판단:</strong> ${trustInfo.message}
                 </div></div>`;
         }
 
@@ -421,11 +477,12 @@
         function setupRefreshButton() { document.getElementById('refresh-issues-btn')?.addEventListener('click', loadCurrentIssues); }
         function navigateTo(page) {
             const pages = {
-                home: '/index.html',        // 또는 '/'
+                home: '/static/index.html',        // 또는 '/'
                 news: '/static/news.html',
                 sector: '/static/sector.html',
                 company: '/static/company.html',
-                game: '/static/game.html'    // 게임 페이지 추가
+                game: '/static/game.html',
+                mypage: '/static/mypage.html'   // 마이페이지 추가
             };
             
             if (pages[page]) {
@@ -435,7 +492,7 @@
         function showNotification(message, type = 'info') { const colors = { success: '#4CAF50', warning: '#ff9800', error: '#f44336', info: '#2196F3' }; const notification = document.createElement('div'); notification.style.cssText = `position:fixed;top:20px;right:20px;background:${colors[type]||colors.info};color:white;padding:15px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;font-weight:500;`; notification.innerHTML = `<div><span>${message}</span><button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;color:white;font-size:18px;cursor:pointer;margin-left:15px;">×</button></div>`; document.body.appendChild(notification); setTimeout(() => { if (notification.parentElement) notification.remove(); }, 5000); }
         
         // ===================================================================
-        // ✨ 시뮬레이션 기능 관련 JavaScript 코드 (개선된 버전)
+        //  시뮬레이션 기능 관련 JavaScript 코드 (개선된 버전)
         // ===================================================================
 
         async function loadSimulationModal() {
@@ -514,11 +571,11 @@
                     <div class="sim-prediction-box">
                         <h4>${data.tickers[ticker]} (${ticker})</h4>
                         <div class="sim-prediction-options">
-                            <label class="up"><input type="radio" name="prediction_${ticker}" value="up" required onchange="toggleInvestmentInput(this)"><span>📈 상승</span></label>
-                            <label class="down"><input type="radio" name="prediction_${ticker}" value="down" onchange="toggleInvestmentInput(this)"><span>📉 하락</span></label>
+                            <label class="up"><input type="radio" name="prediction_${ticker}" value="up" required onchange="toggleInvestmentInput(this)"><span> 상승</span></label>
+                            <label class="down"><input type="radio" name="prediction_${ticker}" value="down" onchange="toggleInvestmentInput(this)"><span> 하락</span></label>
                         </div>
                         <div class="sim-investment-section" id="investment_${ticker}">
-                            <label>💰 투자 금액 (원):</label>
+                            <label> 투자 금액 (원):</label>
                             <input type="number" name="investment_${ticker}" value="1000000" min="0" step="100000">
                         </div>
                     </div>`).join('');
@@ -586,7 +643,7 @@
                 
                 document.getElementById('sim-ai-commentary-content').innerHTML = data.ai_commentary.replace(/\n/g, '<br>');
 
-                // 🔥 [수정] 결과 화면이 그려진 후, 버튼을 찾아 이벤트 리스너를 연결합니다.
+                //  [수정] 결과 화면이 그려진 후, 버튼을 찾아 이벤트 리스너를 연결합니다.
                 const restartBtn = document.getElementById('sim-restart-btn');
                 if(restartBtn) {
                     restartBtn.onclick = () => document.getElementById('simulation-modal-overlay').classList.remove('show');
@@ -618,7 +675,7 @@
                     const verification = pastIssue.verification || {};
                     const isVerified = verification.is_grounded === true;
                     const verificationColor = isVerified ? '#28a745' : '#ffc107';
-                    const verificationIcon = isVerified ? '✅' : '⚠️';
+                    const verificationIcon = isVerified ? '' : '⚠️';
                     const verificationText = isVerified ? '팩트체킹 통과' : '근거 부족';
                     const supportingQuote = verification.supporting_quote || '';
                     const unverifiedReason = verification.unverified_reason || '';
@@ -643,7 +700,7 @@
                                     onclick="startSimulation('${escapedName}', '${escapedDesc}', '${issueDate}')" 
                                     class="simulation-btn"
                                     ${issueDate === 'N/A' ? 'disabled title="정확한 날짜 정보가 없어 시뮬레이션이 불가능합니다."' : ''}>
-                                    📈 시뮬레이션
+                                     시뮬레이션
                                 </button>
                             </div>
                         </div>`;

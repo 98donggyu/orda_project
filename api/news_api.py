@@ -4,10 +4,58 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import json
 from pathlib import Path
+import pandas as pd
 
 from services.database_service import get_database_service
 
 router = APIRouter()
+
+CSV_FILE_PATH = Path(__file__).parent.parent / "data" / "Past_news.csv"
+df_past_news = None
+
+def load_csv_data():
+    """서버 시작 시 CSV 파일을 안전하게 로드하고, 컬럼명을 표준화하는 함수"""
+    global df_past_news
+    try:
+        if not CSV_FILE_PATH.is_file():
+            raise FileNotFoundError(f"{CSV_FILE_PATH} 파일을 찾을 수 없습니다.")
+        
+        df = pd.read_csv(CSV_FILE_PATH)
+        
+        print("✅ Past_news.csv에서 원본 그대로 읽은 컬럼명:", df.columns.tolist())
+
+        # --- ▼▼▼ 핵심 수정 부분: 실제 CSV 컬럼명을 코드 표준 컬럼명으로 매핑 ▼▼▼ ---
+        # 실제 CSV 파일의 컬럼명을 왼쪽에, 코드에서 사용할 이름을 오른쪽에 적습니다.
+        column_mapping = {
+            'ID': 'id',
+            'Issue_name': 'title',
+            'Contents': 'summary',
+            'Contentes(Spec)': 'content', # CSV 파일의 오타('Contentes')를 그대로 반영
+            'Start_date': 'start_date',
+            'Fin_date': 'end_date',
+            '근거자료': 'evidence_source',
+            '카테고리': 'related_industries'
+        }
+        df.rename(columns=column_mapping, inplace=True)
+        # --- ▲▲▲ 핵심 수정 부분 끝 ▲▲▲ ---
+        
+        df = df.fillna('')
+        if 'id' not in df.columns or df['id'].astype(str).duplicated().any():
+            df['id'] = df.index.astype(str)
+        
+        # 'source' 컬럼이 없다면 기본값으로 생성
+        if 'source' not in df.columns:
+            df['source'] = '과거 이슈 DB'
+
+        df_past_news = df
+        print(f"✅ Past_news.csv 데이터 표준화 및 로드 성공. 총 {len(df_past_news)}개 뉴스.")
+        print("   -> 코드에서 사용할 컬럼명:", df_past_news.columns.tolist())
+
+    except Exception as e:
+        df_past_news = pd.DataFrame()
+        print(f"❌ Past_news.csv 파일 로드/처리 실패: {e}")
+
+load_csv_data()
 
 @router.get("/latest")
 async def get_latest_news_issues():
@@ -64,6 +112,45 @@ async def get_latest_news_issues():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"뉴스 조회 실패: {e}")
+
+@router.get("/past", summary="과거 뉴스 목록 조회(CSV 기반)", description="data/Past_news.csv 파일에서 과거 뉴스 데이터를 조회합니다.")
+async def get_past_news(
+    limit: int = 100,
+    search: Optional[str] = Query(None, description="뉴스 제목 또는 내용에서 검색할 키워드"),
+    industry: Optional[str] = Query(None, description="관련 산업별로 필터링")
+):
+    global df_past_news
+    
+    if df_past_news is None or df_past_news.empty:
+        raise HTTPException(status_code=500, detail="서버에 과거 뉴스 데이터(CSV)가 로드되지 않았습니다.")
+    
+    try:
+        df_filtered = df_past_news.copy()
+
+        if search:
+            search_term = search.lower()
+            df_filtered = df_filtered[
+                df_filtered['title'].str.lower().str.contains(search_term, na=False) |
+                df_filtered['summary'].str.lower().str.contains(search_term, na=False)
+            ]
+
+        if industry:
+            df_filtered = df_filtered[
+                df_filtered['related_industries'].str.contains(industry, na=False)
+            ]
+
+        total_count = len(df_filtered)
+        df_result = df_filtered.head(limit)
+        data_to_return = df_result.to_dict(orient='records')
+
+        return {
+            "success": True,
+            "total": total_count,
+            "data": data_to_return
+        }
+    except Exception as e:
+        print(f"❌ 과거 뉴스 처리 중 오류 발생: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 def _enrich_with_rag_details(issues: List[Dict]) -> List[Dict]:
     """이슈 데이터에 RAG 분석의 상세 정보를 추가합니다."""

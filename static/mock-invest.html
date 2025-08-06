@@ -17,19 +17,19 @@
             </div>
             <div class="nav-menu">
                 <div class="nav-item" onclick="navigateTo('home')">
-                    <span class="nav-icon">🏠</span><span>Home</span>
+                    <span class="nav-icon"></span><span>Home</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('news')">
-                    <span class="nav-icon">📰</span><span>News</span>
+                    <span class="nav-icon"></span><span>News</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('sector')">
-                    <span class="nav-icon">🏭</span><span>Sector</span>
+                    <span class="nav-icon"></span><span>Sector</span>
                 </div>
                 <div class="nav-item" onclick="navigateTo('company')">
-                    <span class="nav-icon">🏢</span><span>Company</span>
+                    <span class="nav-icon"></span><span>Company</span>
                 </div>
                 <div class="nav-item active" onclick="navigateTo('mock-invest')">
-                    <span class="nav-icon">📈</span><span>Mock Invest</span>
+                    <span class="nav-icon"></span><span>Mock Invest</span>
                 </div>
             </div>
         </div>
@@ -37,7 +37,7 @@
         <div class="main-content">
             <div class="page-header">
                 <div class="breadcrumb">Home → Mock Invest</div>
-                <h1 class="page-title">📈 모의투자 시뮬레이션</h1>
+                <h1 class="page-title"> 모의투자 시뮬레이션</h1>
                 <p class="page-subtitle">과거 이슈 시점으로 돌아가 "만약 그때 투자했다면?"을 체험해보세요.</p>
             </div>
             
@@ -51,7 +51,7 @@
             
             <div id="step-content">
                 <div class="scenario-section" id="scenario-section">
-                    <h2 class="section-title">🎯 과거 이슈 시나리오 선택</h2>
+                    <h2 class="section-title"> 과거 이슈 시나리오 선택</h2>
                     <div class="scenarios-grid" id="scenarios-container"></div>
                 </div>
                 <div class="investment-setup" id="investment-setup" style="display: none;">
@@ -155,7 +155,7 @@
         
         function displayStockSelection(recommendedStocks) {
             const container = document.getElementById('stock-selection');
-            let content = `<h2 class="section-title">📊 포트폴리오 구성</h2>`;
+            let content = `<h2 class="section-title"> 포트폴리오 구성</h2>`;
             for (const industry in recommendedStocks) {
                 content += `
                     <div class="industry-section">

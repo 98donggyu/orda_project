@@ -272,26 +272,12 @@
                 <div class="logo-subtitle">투자 학습 플랫폼</div>
             </div>
             <div class="nav-menu">
-                <div class="nav-item" onclick="navigateTo('home')">
-                    <span class="nav-icon">🏠</span>
-                    <span>Home</span>
-                </div>
-                <div class="nav-item" onclick="navigateTo('news')">
-                    <span class="nav-icon">📰</span>
-                    <span>News</span>
-                </div>
-                <div class="nav-item" onclick="navigateTo('sector')">
-                    <span class="nav-icon">🏭</span>
-                    <span>Sector</span>
-                </div>
-                <div class="nav-item" onclick="navigateTo('company')">
-                    <span class="nav-icon">🏢</span>
-                    <span>Company</span>
-                </div>
-                <div class="nav-item active" onclick="navigateTo('game')">
-                    <span class="nav-icon">🎮</span>
-                    <span>Game</span>
-                </div>
+                <div class="nav-item" onclick="navigateTo('home')"> <span class="nav-icon"></span> <span>Home</span> </div>
+                <div class="nav-item" onclick="navigateTo('mypage')"><span class="nav-icon"></span> <span>My Page</span> </div>
+                <div class="nav-item" onclick="navigateTo('news')"> <span class="nav-icon"></span> <span>News</span> </div>
+                <div class="nav-item" onclick="navigateTo('sector')"> <span class="nav-icon"></span> <span>Sector</span> </div>
+                <div class="nav-item" onclick="navigateTo('company')"> <span class="nav-icon"></span> <span>Company</span> </div>
+                <div class="nav-item active" onclick="navigateTo('game')"> <span class="nav-icon"></span> <span>Game</span> </div>
             </div>
         </div>
         
@@ -299,7 +285,7 @@
         <div class="main-content">
             <!-- 페이지 헤더 -->
             <div class="page-header">
-                <h1 class="page-title">🎮 금융 마스터 게임</h1>
+                <h1 class="page-title"> 금융 마스터 게임</h1>
                 <p class="page-subtitle">
                     재미있는 게임으로 금융 용어와 투자 전략을 배워보세요!<br>
                     AI 시뮬레이션과 보드게임으로 실전 감각을 키워보세요.
@@ -311,13 +297,13 @@
                 <!-- 금융 블루마블 게임 -->
                 <div class="game-card" onclick="playGame('bluemarble')">
                     <div class="game-card-header">
-                        💰
+                        
                     </div>
                     <div class="game-card-body">
-                        <h3 class="game-title">금융 마스터 블루마블</h3>
+                        <h3 class="game-title">금융 마스터 부루마블</h3>
                         <p class="game-description">
                             블루마블 형식의 보드게임으로 금융 용어를 학습하세요! 
-                            주사위를 굴려 보드를 돌며 퀴즈를 풀고 건물을 건설하여 
+                            주사위를 굴려 보드를 돌며 퀴즈를 풀고
                             금융 지식을 쌓아보세요.
                         </p>
                         <div class="game-features">
@@ -326,7 +312,7 @@
                             <span class="feature-tag">건물 건설</span>
                         </div>
                         <button class="play-button">
-                            🎲 게임 시작하기
+                             게임 시작하기
                         </button>
                     </div>
                 </div>
@@ -334,10 +320,10 @@
                 <!-- AI 투자 시뮬레이션 -->
                 <div class="game-card" onclick="playGame('simulation')">
                     <div class="game-card-header">
-                        🤖
+                        
                     </div>
                     <div class="game-card-body">
-                        <h3 class="game-title">AI 투자 시뮬레이션</h3>
+                        <h3 class="game-title">모의 투자 시뮬레이션</h3>
                         <p class="game-description">
                             과거 실제 이슈를 바탕으로 투자 시뮬레이션을 체험하세요! 
                             AI가 분석한 산업과 종목에 투자하고, 실제 주가 데이터로 
@@ -350,7 +336,7 @@
                             <span class="feature-tag">성과 분석</span>
                         </div>
                         <button class="play-button">
-                            📈 시뮬레이션 시작
+                             시뮬레이션 시작
                         </button>
                     </div>
                 </div>
@@ -359,10 +345,10 @@
                 <div class="game-card" style="opacity: 0.7; cursor: not-allowed;">
                     <div class="coming-soon">Coming Soon</div>
                     <div class="game-card-header" style="background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);">
-                        🎯
+                        
                     </div>
                     <div class="game-card-body">
-                        <h3 class="game-title">가짜 뉴스 판별 게임</h3>
+                        <h3 class="game-title">가짜 뉴스 판별 퀴즈</h3>
                         <p class="game-description">
                             가짜 뉴스와 진짜 뉴스를 구별하는 게임입니다. 
                             다양한 뉴스 기사를 읽고, 진위를 판단하여 금융 지식을 
@@ -374,7 +360,7 @@
                             <span class="feature-tag">난이도 선택</span>
                         </div>
                         <button class="play-button" disabled style="opacity: 0.5;">
-                            🔒 준비중
+                             준비중
                         </button>
                     </div>
                 </div>
@@ -396,7 +382,8 @@
                 news: '/static/news.html',
                 sector: '/static/sector.html',
                 company: '/static/company.html',
-                game: '/static/game.html'
+                game: '/static/game.html',
+                mypage: '/static/mypage.html'
             };
             
             if (pages[page]) {
@@ -471,7 +458,7 @@
             if (statValues[0]) statValues[0].textContent = playCount;
             if (statValues[1]) statValues[1].textContent = highScore;
             if (statValues[2]) statValues[2].textContent = avgAccuracy + '%';
-            if (statValues[3]) statValues[3].textContent = '🏆 ' + badges;
+            if (statValues[3]) statValues[3].textContent = ' ' + badges;
         }
         
         // 페이지 로드 시 통계 불러오기

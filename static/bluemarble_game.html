@@ -87,25 +87,25 @@
     </style>
 </head>
 <body>
-    <div class="game-header"><h1 class="game-title">💰 금융 마스터 블루마블</h1></div>
+    <div class="game-header"><h1 class="game-title"> 금융 마스터 블루마블</h1></div>
     <div class="players-info">
         <div class="player-card active" id="player-card-1">
-            <div class="player-avatar player1-avatar">👤</div>
+            <div class="player-avatar player1-avatar"></div>
             <div class="player-info">
                 <div class="player-name">Player 1</div>
                 <div class="player-stats">
-                    <span class="stat">💰 <span class="stat-money">200만원</span></span>
-                    <span class="stat">🏢 <span class="stat-building">0개</span></span>
+                    <span class="stat"> <span class="stat-money">200만원</span></span>
+                    <span class="stat"> <span class="stat-building">0개</span></span>
                 </div>
             </div>
         </div>
         <div class="player-card" id="player-card-2">
-            <div class="player-avatar player2-avatar">👥</div>
+            <div class="player-avatar player2-avatar"></div>
             <div class="player-info">
                 <div class="player-name">Player 2</div>
                 <div class="player-stats">
-                    <span class="stat">💰 <span class="stat-money">200만원</span></span>
-                    <span class="stat">🏢 <span class="stat-building">0개</span></span>
+                    <span class="stat"> <span class="stat-money">200만원</span></span>
+                    <span class="stat"> <span class="stat-building">0개</span></span>
                 </div>
             </div>
         </div>
@@ -113,7 +113,7 @@
     <div class="game-container">
         <div class="game-board" id="gameBoard">
             <div class="board-center">
-                <div class="center-logo">🎲</div>
+                <div class="center-logo"></div>
                 <div class="center-title">금융 마스터</div>
                 <div class="dice-area">
                     <div class="dice-container">
@@ -124,7 +124,7 @@
                             <div class="dice-face face-1"><span class="pip"></span></div><div class="dice-face face-2"><span class="pip"></span><span class="pip"></span></div><div class="dice-face face-3"><span class="pip"></span><span class="pip"></span><span class="pip"></span></div><div class="dice-face face-4"><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></div><div class="dice-face face-5"><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></div><div class="dice-face face-6"><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span><span class="pip"></span></div>
                         </div>
                     </div>
-                    <button class="roll-button" onclick="rollDice()">🎲 주사위 굴리기</button>
+                    <button class="roll-button" onclick="rollDice()"> 주사위 굴리기</button>
                 </div>
             </div>
         </div>
@@ -142,7 +142,7 @@
     </div>
 
 <script>
-    const boardData = [ { type: 'start', name: 'START', icon: '🚀' }, { type: 'property', name: '주식', price: 10, color: 'red' }, { type: 'property', name: '채권', price: 10, color: 'red' }, { type: 'property', name: '펀드', price: 12, color: 'red' }, { type: 'bonus', name: '보너스', icon: '🎁' }, { type: 'property', name: 'ETF', price: 14, color: 'orange' }, { type: 'property', name: '선물', price: 14, color: 'orange' }, { type: 'chance', name: '찬스', icon: '⚡' }, { type: 'property', name: '옵션', price: 16, color: 'orange' }, { type: 'property', name: 'PER', price: 18, color: 'yellow' }, { type: 'jail', name: '감옥', icon: '🔒' }, { type: 'property', name: 'PBR', price: 18, color: 'yellow' }, { type: 'property', name: 'ROE', price: 20, color: 'yellow' }, { type: 'bonus', name: '보너스', icon: '🎁' }, { type: 'property', name: 'EPS', price: 22, color: 'green' }, { type: 'property', name: 'BPS', price: 22, color: 'green' }, { type: 'chance', name: '찬스', icon: '⚡' }, { type: 'property', name: '배당률', price: 24, color: 'green' }, { type: 'property', name: '시가총액', price: 26, color: 'blue' }, { type: 'property', name: '거래량', price: 26, color: 'blue' }, { type: 'parking', name: '무료주차', icon: '🅿️' }, { type: 'property', name: '매수/매도', price: 28, color: 'blue' }, { type: 'bonus', name: '보너스', icon: '🎁' }, { type: 'property', name: 'IPO', price: 30, color: 'purple' }, { type: 'property', name: '공모주', price: 30, color: 'purple' }, { type: 'chance', name: '찬스', icon: '⚡' }, { type: 'property', name: '증자', price: 32, color: 'purple' }, { type: 'property', name: '코스피', price: 35, color: 'pink' }, { type: 'bonus', name: '보너스', icon: '🎁' }, { type: 'property', name: '코스닥', price: 35, color: 'pink' }, { type: 'travel', name: '세계여행', icon: '✈️' }, { type: 'property', name: '나스닥', price: 40, color: 'pink' }, { type: 'chance', name: '찬스', icon: '⚡' }, { type: 'property', name: 'S&P500', price: 45, color: 'teal' }, { type: 'property', name: '다우존스', price: 45, color: 'teal' }, { type: 'bonus', name: '보너스', icon: '🎁' }, { type: 'property', name: '닛케이', price: 50, color: 'teal' }, { type: 'chance', name: '찬스', icon: '⚡' }, { type: 'property', name: '환율', price: 55, color: 'red' }, { type: 'property', name: '금리', price: 60, color: 'red' }, ];
+    const boardData = [ { type: 'start', name: 'START', icon: '' }, { type: 'property', name: '주식', price: 10, color: 'red' }, { type: 'property', name: '채권', price: 10, color: 'red' }, { type: 'property', name: '펀드', price: 12, color: 'red' }, { type: 'bonus', name: '보너스', icon: '' }, { type: 'property', name: 'ETF', price: 14, color: 'orange' }, { type: 'property', name: '선물', price: 14, color: 'orange' }, { type: 'chance', name: '찬스', icon: '' }, { type: 'property', name: '옵션', price: 16, color: 'orange' }, { type: 'property', name: 'PER', price: 18, color: 'yellow' }, { type: 'jail', name: '감옥', icon: '' }, { type: 'property', name: 'PBR', price: 18, color: 'yellow' }, { type: 'property', name: 'ROE', price: 20, color: 'yellow' }, { type: 'bonus', name: '보너스', icon: '' }, { type: 'property', name: 'EPS', price: 22, color: 'green' }, { type: 'property', name: 'BPS', price: 22, color: 'green' }, { type: 'chance', name: '찬스', icon: '' }, { type: 'property', name: '배당률', price: 24, color: 'green' }, { type: 'property', name: '시가총액', price: 26, color: 'blue' }, { type: 'property', name: '거래량', price: 26, color: 'blue' }, { type: 'parking', name: '무료주차', icon: '🅿️' }, { type: 'property', name: '매수/매도', price: 28, color: 'blue' }, { type: 'bonus', name: '보너스', icon: '' }, { type: 'property', name: 'IPO', price: 30, color: 'purple' }, { type: 'property', name: '공모주', price: 30, color: 'purple' }, { type: 'chance', name: '찬스', icon: '' }, { type: 'property', name: '증자', price: 32, color: 'purple' }, { type: 'property', name: '코스피', price: 35, color: 'pink' }, { type: 'bonus', name: '보너스', icon: '' }, { type: 'property', name: '코스닥', price: 35, color: 'pink' }, { type: 'travel', name: '세계여행', icon: '✈️' }, { type: 'property', name: '나스닥', price: 40, color: 'pink' }, { type: 'chance', name: '찬스', icon: '' }, { type: 'property', name: 'S&P500', price: 45, color: 'teal' }, { type: 'property', name: '다우존스', price: 45, color: 'teal' }, { type: 'bonus', name: '보너스', icon: '' }, { type: 'property', name: '닛케이', price: 50, color: 'teal' }, { type: 'chance', name: '찬스', icon: '' }, { type: 'property', name: '환율', price: 55, color: 'red' }, { type: 'property', name: '금리', price: 60, color: 'red' }, ];
     const quizData = [ { term: 'PER', description: 'Price Earnings Ratio의 약자로, 주가를 주당순이익(EPS)으로 나눈 값입니다. 기업이 벌어들이는 이익에 비해 주가가 높은지 낮은지를 판단하는 지표는?', options: ['주가수익비율', '주가순자산비율', '자기자본이익률', '부채비율'], correctIndex: 0 }, { term: 'PBR', description: 'Price Book-value Ratio의 약자로, 주가를 주당순자산가치(BPS)로 나눈 값입니다. 기업의 자산가치 대비 주가 수준을 나타내는 지표는?', options: ['주가순자산비율', '주가수익비율', '총자산순이익률', '배당수익률'], correctIndex: 0 }, { term: 'IPO', description: 'Initial Public Offering의 약자로, 비상장기업이 처음으로 주식을 공개적으로 판매하여 증권거래소에 상장하는 절차를 무엇이라고 할까요?', options: ['기업공개', '유상증자', '무상증자', '자사주 매입'], correctIndex: 0 }, { term: 'ETF', description: 'Exchange Traded Fund의 약자로, 특정 주가 지수나 자산의 움직임에 따라 수익률이 결정되는, 거래소에 상장되어 주식처럼 거래되는 펀드를 무엇이라 할까요?', options: ['상장지수펀드', '인덱스 펀드', '뮤추얼 펀드', '헤지 펀드'], correctIndex: 0 } ];
 
     let gameState = {
@@ -198,7 +198,7 @@
         });
         
         const startTile = boardEl.querySelector('[data-type="start"]');
-        startTile.innerHTML += `<div class="player-piece player1 active" id="player-piece-1">👤<div class="piece-info"></div></div><div class="player-piece player2" id="player-piece-2">👥<div class="piece-info"></div></div>`;
+        startTile.innerHTML += `<div class="player-piece player1 active" id="player-piece-1"><div class="piece-info"></div></div><div class="player-piece player2" id="player-piece-2"><div class="piece-info"></div></div>`;
         boardEl.appendChild(boardEl.querySelector('.board-center'));
     }
 
@@ -351,7 +351,7 @@
         gameState.currentQuizTile = tile;
 
         const tileData = boardData[tile.dataset.index];
-        document.getElementById('quiz-title').textContent = tile.dataset.owner === 'none' ? '💡 건물 찬스 퀴즈' : '🚨 통행료 감면 퀴즈';
+        document.getElementById('quiz-title').textContent = tile.dataset.owner === 'none' ? ' 건물 찬스 퀴즈' : ' 통행료 감면 퀴즈';
         document.querySelector('.quiz-tile-info').textContent = tileData.name;
         document.querySelector('.quiz-tile-info').className = `quiz-tile-info band-${tileData.color}`;
         document.querySelector('.quiz-term').textContent = randomQuiz.term;
@@ -411,7 +411,7 @@
             card.querySelector('.stat-building:last-of-type').textContent = `${player.buildings.length}개`;
             
             // 플레이어 말 하단 정보 업데이트
-            pieceInfo.innerHTML = `💰${(player.money / 10000).toLocaleString()} | 🏢${player.buildings.length}`;
+            pieceInfo.innerHTML = `${(player.money / 10000).toLocaleString()} | ${player.buildings.length}`;
         }
     }
 

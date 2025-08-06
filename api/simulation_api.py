@@ -1,99 +1,83 @@
-# api/simulation_api.py
 from fastapi import APIRouter, HTTPException
-from typing import List, Optional  # [수정] Optional을 여기서 import 합니다.
+from pydantic import BaseModel
+from typing import Dict, Any
 
-from models.schemas import (
-    SimulationRequest, SimulationResponse, ValidationResponse,
-    Scenario, RecommendedStockInfo
-)
-from services import simulation_service, database_service
+# 1. 서비스 로직을 임포트합니다.
+from services.simulation_service import simulation_service
 
+# 2. 이 파일의 모든 API 경로를 관리할 APIRouter를 생성합니다.
 router = APIRouter()
 
-@router.get("/scenarios", response_model=List[Scenario])
-async def get_scenarios():
-    """사용 가능한 모든 모의투자 시나리오 목록을 반환합니다."""
-    if not simulation_service.is_initialized():
-        raise HTTPException(status_code=503, detail="시뮬레이션 서비스가 준비되지 않았습니다.")
-    return simulation_service.engine.get_available_scenarios()
+# 3. API가 받을 요청/응답 데이터의 형식을 정의합니다.
+class IndustryRequest(BaseModel):
+    issue_name: str
+    issue_description: str
 
-@router.get("/scenarios/{scenario_id}/recommended-stocks", response_model=RecommendedStockInfo)
-async def get_recommended_stocks(scenario_id: str):
-    """특정 시나리오에 대한 추천 종목 목록을 반환합니다."""
-    if not simulation_service.is_initialized():
-        raise HTTPException(status_code=503, detail="시뮬레이션 서비스가 준비되지 않았습니다.")
-        
-    stocks = simulation_service.engine.get_recommended_stocks_for_scenario(scenario_id)
-    if not stocks:
-        raise HTTPException(status_code=404, detail="해당 시나리오의 추천 종목을 찾을 수 없습니다.")
-    return {"scenario_id": scenario_id, "recommended_stocks": stocks}
+class StockRequest(BaseModel):
+    issue_name: str
+    issue_date: str
+    industry_name: str
 
-@router.post("/validate-simulation", response_model=ValidationResponse)
-async def validate_simulation(request: SimulationRequest):
-    """모의투자 실행 전 입력값을 검증합니다."""
-    if not simulation_service.is_initialized():
-        raise HTTPException(status_code=503, detail="시뮬레이션 서비스가 준비되지 않았습니다.")
-    
-    validation_result = await simulation_service.engine.validate_simulation_inputs(
-        request.scenario_id,
-        request.investment_amount,
-        request.investment_period,
-        request.selected_stocks,
-    )
-    return validation_result
+class CalculationRequest(BaseModel):
+    issue_name: str
+    issue_date: str
+    tickers: Dict[str, str]
+    predictions: Dict[str, str]
+    investments: Dict[str, float]
 
-@router.post("/run-simulation", response_model=SimulationResponse)
-async def run_simulation(request: SimulationRequest):
-    """모의투자를 실행하고 그 결과를 반환합니다."""
-    if not simulation_service.is_initialized() or not database_service.is_initialized():
-        raise HTTPException(status_code=503, detail="필요한 서비스가 준비되지 않았습니다.")
+# --- API 엔드포인트 정의 ---
 
-    validation = await simulation_service.engine.validate_simulation_inputs(
-        request.scenario_id, request.investment_amount, request.investment_period, request.selected_stocks
-    )
-    if not validation["valid"]:
-        raise HTTPException(status_code=400, detail=validation)
+@router.post("/analyze_industries")
+async def analyze_industries_for_issue(request: IndustryRequest):
+    """[1단계] 과거 이슈를 받아 AI가 관련 산업 3개를 분석하여 반환"""
+    ai_analysis = simulation_service.analyze_issue_for_industries(request.issue_name, request.issue_description)
+    if not ai_analysis or not ai_analysis.get("industries"):
+        raise HTTPException(status_code=500, detail="AI 산업 분석에 실패했습니다.")
+    return {"success": True, "data": ai_analysis}
 
-    try:
-        result = await simulation_service.engine.run_simulation(
-            request.scenario_id, request.investment_amount, request.investment_period, request.selected_stocks
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"시뮬레이션 실행 중 오류: {e}")
+@router.post("/analyze_stocks")
+async def analyze_stocks_for_industry(request: StockRequest):
+    """[2단계] 선택된 산업을 받아 AI가 관련 종목 4개를 분석하고 차트 데이터 반환"""
+    ai_analysis = simulation_service.analyze_industry_for_stocks(request.issue_name, request.industry_name)
+    if not ai_analysis or not ai_analysis.get("related_stocks"):
+        raise HTTPException(status_code=500, detail="AI 종목 분석에 실패했습니다.")
 
-    try:
-        await database_service.db_api.save_simulation_result(request, result)
-    except Exception as e:
-        print(f"Warning: 시뮬레이션 결과 저장 실패 - {e}")
+    tickers = {stock['ticker']: stock['name'] for stock in ai_analysis.get('related_stocks', [])}
+    if not tickers:
+        raise HTTPException(status_code=404, detail="AI가 관련 종목을 찾지 못했습니다.")
 
-    return result
+    initial_chart = simulation_service.create_stock_chart(request.issue_date, tickers, show_future=False)
 
-# [추가된 API] 기업 목록 제공
-@router.get("/companies")
-async def get_companies_for_simulation(sector: Optional[str] = None, query: Optional[str] = None):
-    """모의투자에 사용될 기업 목록을 반환합니다."""
-    if not simulation_service.is_initialized():
-        raise HTTPException(status_code=503, detail="시뮬레이션 서비스가 준비되지 않았습니다.")
-    
-    # 예시 데이터 (실제로는 DB 연동 필요)
-    all_companies = [
-        {"code": "005930", "name": "삼성전자", "sector": "반도체", "market_cap": "447조원", "per": "15.2", "pbr": "1.4", "price": 74800, "change": "+1200", "change_rate": "+1.63%"},
-        {"code": "000660", "name": "SK하이닉스", "sector": "반도체", "market_cap": "65조원", "per": "12.8", "pbr": "1.1", "price": 89600, "change": "-800", "change_rate": "-0.88%"},
-        {"code": "010950", "name": "S-OIL", "sector": "정유", "market_cap": "8.2조원", "per": "8.5", "pbr": "0.9", "price": 68900, "change": "+2100", "change_rate": "+3.14%"},
-        {"code": "047810", "name": "한국항공우주", "sector": "방위산업", "market_cap": "1.9조원", "per": "18.2", "pbr": "2.1", "price": 42350, "change": "+1850", "change_rate": "+4.57%"},
-        {"code": "051910", "name": "LG화학", "sector": "화학", "market_cap": "27조원", "per": "22.1", "pbr": "1.8", "price": 385000, "change": "-5000", "change_rate": "-1.28%"},
-        {"code": "035720", "name": "카카오", "sector": "IT 서비스", "market_cap": "25조원", "per": "N/A", "pbr": "2.3", "price": 58400, "change": "+900", "change_rate": "+1.56%"},
-    ]
+    return {"success": True, "data": {"ai_analysis": ai_analysis, "tickers": tickers, "chart_image": initial_chart}}
 
-    filtered_companies = all_companies
-    if sector:
-        filtered_companies = [c for c in filtered_companies if c['sector'] == sector]
-    
-    if query:
-        query_lower = query.lower()
-        filtered_companies = [
-            c for c in filtered_companies 
-            if query_lower in c['name'].lower() or query_lower in c['code']
-        ]
+@router.post("/calculate_result")
+async def calculate_simulation_result(request: CalculationRequest):
+    """[3단계] 사용자의 투자를 받아 실제 결과와 AI 코멘터리를 함께 반환"""
+    investment_results = simulation_service.get_investment_results(request.issue_date, request.tickers, request.investments)
+    full_chart = simulation_service.create_stock_chart(request.issue_date, request.tickers, show_future=True)
+    ai_commentary = simulation_service.generate_investment_commentary(request.issue_name, investment_results, request.predictions)
 
-    return {"success": True, "data": filtered_companies}
+    total_investment = sum(request.investments.values())
+    total_final_value = sum(res.get('final_value', 0) for res in investment_results.values())
+    total_profit_loss = total_final_value - total_investment
+
+    correct_predictions = 0
+    total_predictions = len(request.predictions)
+    if total_predictions > 0:
+        for ticker, pred in request.predictions.items():
+            if pred == investment_results.get(ticker, {}).get('status'):
+                correct_predictions += 1
+        prediction_accuracy = (correct_predictions / total_predictions * 100)
+    else:
+        prediction_accuracy = 0
+
+    return {
+        "success": True,
+        "data": {
+            "issue_name": request.issue_name, "tickers": request.tickers,
+            "investment_results": investment_results, "predictions": request.predictions,
+            "chart_image": full_chart, "total_investment": total_investment,
+            "total_final_value": total_final_value, "total_profit_loss": total_profit_loss,
+            "prediction_accuracy": prediction_accuracy, "ai_commentary": ai_commentary
+        }
+    }

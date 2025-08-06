@@ -1,207 +1,277 @@
 # services/simulation_service.py
+
+import os
+import json
+import io
+import base64
+from datetime import datetime, timedelta
+from typing import Dict, Any, List
+
+import openai
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime
-from typing import Dict, List, Any, Optional
-import asyncio
-from dataclasses import dataclass
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 
-# --- Pydantic Schemas for API ---
-# API 통신에 사용되는 Pydantic 모델만 schemas 파일에서 가져옵니다.
-from models.schemas import SimulationRequest, StockSelection
+# --- 설정 ---
+matplotlib.use('Agg')
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# --- Configuration ---
-from config import YFINANCE_TICKER_SUFFIX_KOSPI, YFINANCE_TICKER_SUFFIX_KOSDAQ
+try:
+    font_path = 'c:/Windows/Fonts/malgun.ttf'
+    font_prop = fm.FontProperties(fname=font_path).get_name()
+    plt.rc('font', family=font_prop)
+except FileNotFoundError:
+    print("경고: 맑은 고딕 폰트를 찾을 수 없습니다.")
 
-# --- Service-Internal Data Structures ---
-# 서비스 내부 로직에서만 사용할 데이터 클래스를 여기에 직접 정의합니다.
-@dataclass
-class SimulationStock:
-    """시뮬레이션용 종목 정보 (내부용)"""
-    code: str
-    name: str
-    industry: str
-    allocation: float
-    amount: int
-
-@dataclass
-class SimulationScenario:
-    """시뮬레이션 시나리오 (내부용)"""
-    id: str
-    name: str
-    description: str
-    start_date: str
-    end_date: str
-    related_industries: List[str]
-
-class SimulationEngine:
-    """과거 데이터를 기반으로 모의투자를 실행하는 엔진"""
+class SimulationService:
     def __init__(self):
-        self.scenarios: Dict[str, SimulationScenario] = self._load_scenarios()
-        self.stock_code_mapping: Dict[str, str] = self._load_stock_mapping()
-        self.market_indices = {"KOSPI": f"^{YFINANCE_TICKER_SUFFIX_KOSPI[1:]}"} # 예: ^KS11
+        self.client = openai.OpenAI()
 
-    def _load_scenarios(self) -> Dict[str, SimulationScenario]:
-        return {
-            "PN_006": SimulationScenario(
-                id="PN_006", name="일본 반도체 소재 수출 규제",
-                description="일본의 반도체 핵심 소재 수출 규제로 국내 반도체 업계 타격 및 국산화 동력 발생",
-                start_date="2019-07-01", end_date="2020-01-31",
-                related_industries=["반도체", "화학", "IT 서비스"]
-            ),
-            "PN_005": SimulationScenario(
-                id="PN_005", name="이란 솔레이마니 제거 사건",
-                description="미군의 이란 쿠드스 부대 사령관 제거로 중동 긴장 고조",
-                start_date="2020-01-01", end_date="2020-04-30",
-                related_industries=["정유", "방위산업", "금융"]
-            ),
-            "PN_004": SimulationScenario(
-                id="PN_004", name="코로나19 재확산과 델타·오미크론 등장",
-                description="변이 바이러스로 리오프닝 지연, 비대면 산업 재조명",
-                start_date="2021-07-01", end_date="2021-12-31",
-                related_industries=["운송·창고", "의료·정밀기기", "IT 서비스"]
+    def analyze_issue_for_industries(self, issue_name: str, issue_description: str) -> Dict[str, Any]:
+        """[AI Agent 1] 과거 이슈로부터 가장 영향받은 3개 산업을 분석"""
+        prompt = f"""
+        당신은 과거 한국 주식 시장 데이터에 정통한 전문 퀀트 애널리스트입니다.
+        주어진 과거 경제 이벤트 정보를 바탕으로, 당시 가장 큰 영향을 받았을 **핵심 산업 3개**를 선정하고 그 이유를 분석해주세요.
+
+        [과거 경제 이벤트 정보]
+        - 이벤트명: {issue_name}
+        - 상세 내용: {issue_description}
+
+        [출력 형식]
+        반드시 아래와 같은 JSON 형식으로만 답변해주세요.
+        {{
+          "industries": [
+            {{"industry_name": "산업명 1", "reason": "이 산업이 왜 이벤트의 영향을 받았는지에 대한 분석"}},
+            {{"industry_name": "산업명 2", "reason": "이 산업이 왜 이벤트의 영향을 받았는지에 대한 분석"}},
+            {{"industry_name": "산업명 3", "reason": "이 산업이 왜 이벤트의 영향을 받았는지에 대한 분석"}}
+          ]
+        }}
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "system", "content": "당신은 한국 경제사와 주식시장 역사에 정통한 전문가입니다."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}, temperature=0.1
             )
-        }
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"AI 산업 분석 오류: {e}")
+            return None
 
-    def _load_stock_mapping(self) -> Dict[str, str]:
-        return {
-            "005930": f"005930{YFINANCE_TICKER_SUFFIX_KOSPI}", # 삼성전자
-            "000660": f"000660{YFINANCE_TICKER_SUFFIX_KOSPI}", # SK하이닉스
-            "051910": f"051910{YFINANCE_TICKER_SUFFIX_KOSPI}", # LG화학
-            "010950": f"010950{YFINANCE_TICKER_SUFFIX_KOSPI}", # S-OIL
-            "047810": f"047810{YFINANCE_TICKER_SUFFIX_KOSPI}", # 한국항공우주
-            "105560": f"105560{YFINANCE_TICKER_SUFFIX_KOSPI}", # KB금융
-            "035720": f"035720{YFINANCE_TICKER_SUFFIX_KOSPI}", # 카카오
-            "145020": f"145020{YFINANCE_TICKER_SUFFIX_KOSDAQ}", # 휴젤
-        }
-        
-    def get_available_scenarios(self) -> List[Dict]:
-        """[수정] .dict() 대신 수동으로 딕셔너리를 생성합니다."""
-        scenarios_list = []
-        for s in self.scenarios.values():
-            scenarios_list.append({
-                "id": s.id,
-                "name": s.name,
-                "description": s.description,
-                "period": f"{s.start_date} ~ {s.end_date}",
-                "related_industries": s.related_industries
-            })
-        return scenarios_list
+    def analyze_industry_for_stocks(self, issue_name: str, industry_name: str) -> Dict[str, Any]:
+        """[AI Agent 2] 특정 산업 내에서 대표주 2개와 변동성주 2개를 분석"""
+        prompt = f"""
+        당신은 특정 산업과 이벤트에 대한 종목 분석 전문가입니다.
+        주어진 과거 이벤트와 산업 분야를 바탕으로, 당시 가장 주목할 만한 종목 4개를 선정해주세요.
 
-    def get_recommended_stocks_for_scenario(self, scenario_id: str) -> Dict:
-        recommendations = {
-            "PN_006": {"반도체": [{"code": "005930", "name": "삼성전자"}, {"code": "000660", "name": "SK하이닉스"}]},
-            "PN_005": {"정유": [{"code": "010950", "name": "S-OIL"}], "방위산업": [{"code": "047810", "name": "한국항공우주"}]},
-            "PN_004": {"IT 서비스": [{"code": "035720", "name": "카카오"}], "의료·정밀기기": [{"code": "145020", "name": "휴젤"}]}
-        }
-        return recommendations.get(scenario_id, {})
+        [과거 경제 이벤트 정보]
+        - 이벤트명: {issue_name}
+        
+        [분석 대상 산업]
+        - 산업명: {industry_name}
 
-    async def _fetch_data(self, tickers: List[str], start: str, end: str) -> pd.DataFrame:
-        loop = asyncio.get_event_loop()
-        # yfinance의 출력을 숨기기 위해 progress=False 추가
-        return await loop.run_in_executor(None, yf.download, tickers, start, end, progress=False)
+        [분석 요청]
+        1. 위 산업 분야에서, 당시 이벤트와 관련하여 가장 대표적인 **대형주 2개**를 선정해주세요.
+        2. 위 산업 분야 또는 관련 테마에서, 당시 이벤트로 인해 **주가 변동성이 컸던 중소형주 2개**를 선정해주세요.
+        3. 각 기업을 선정한 이유를 간략하고 명확하게 설명해주세요.
 
-    async def run_simulation(self, scenario_id: str, investment_amount: int, investment_period: int, selected_stocks: List[StockSelection]) -> Dict:
-        scenario = self.scenarios[scenario_id]
-        sim_start_date = pd.to_datetime(scenario.start_date)
-        sim_end_date = sim_start_date + pd.DateOffset(months=investment_period)
-        
-        stock_codes = [s.code for s in selected_stocks]
-        tickers = [self.stock_code_mapping.get(c) for c in stock_codes if self.stock_code_mapping.get(c)]
-        
-        data = await self._fetch_data(tickers + list(self.market_indices.values()), sim_start_date - pd.DateOffset(days=5), sim_end_date + pd.DateOffset(days=5))
-        prices = data['Adj Close'].loc[sim_start_date:sim_end_date]
-        
-        if prices.empty:
-            raise ValueError("선택된 기간에 대한 주가 데이터를 가져올 수 없습니다.")
+        [출력 형식]
+        반드시 아래와 같은 JSON 형식으로만 답변해주세요. 종목 코드는 '.KS'(코스피) 또는 '.KQ'(코스닥)를 포함해야 합니다.
+        {{
+          "related_stocks": [
+            {{"name": "대표 대형주 A", "ticker": "005930.KS", "reason": "이 기업을 선정한 이유 (대형주 관점)"}},
+            {{"name": "대표 대형주 B", "ticker": "000660.KS", "reason": "이 기업을 선정한 이유 (대형주 관점)"}},
+            {{"name": "고변동성 중소형주 C", "ticker": "036930.KQ", "reason": "이 기업을 선정한 이유 (중소형 테마주 관점)"}},
+            {{"name": "고변동성 중소형주 D", "ticker": "053300.KQ", "reason": "이 기업을 선정한 이유 (중소형 테마주 관점)"}}
+          ]
+        }}
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "system", "content": "당신은 특정 산업과 이벤트에 대한 종목 분석 전문가입니다."}, {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}, temperature=0.3
+            )
+            return json.loads(response.choices[0].message.content)
+        except Exception as e:
+            print(f"AI 종목 분석 오류: {e}")
+            return None
 
-        portfolio_df = pd.DataFrame(index=prices.index)
-        
-        for stock in selected_stocks:
-            ticker = self.stock_code_mapping.get(stock.code)
-            if ticker in prices.columns and not prices[ticker].dropna().empty:
-                initial_price = prices[ticker].dropna().iloc[0]
-                if initial_price > 0:
-                    num_shares = (investment_amount * (stock.allocation / 100)) / initial_price
-                    portfolio_df[stock.code] = prices[ticker] * num_shares
-        
-        portfolio_df = portfolio_df.fillna(method='ffill').dropna()
-        portfolio_df['total'] = portfolio_df.sum(axis=1)
+    def generate_investment_commentary(self, issue_name: str, results: Dict, predictions: Dict) -> str:
+        """[AI Agent 3] 사용자의 투자 결과에 대한 AI 코멘터리를 생성"""
+        prompt = f"""
+        당신은 투자 경험이 풍부한 멘토입니다. 사용자의 모의 투자 결과를 보고 맞춤형 피드백을 제공해주세요. 단 하락했다고 예측했을 때 숏 포지션이나 풋 옵션을 사용해야 했다는 점은 고려하지 말아주세요.
 
-        if portfolio_df.empty:
-            raise ValueError("포트폴리오 가치를 계산할 수 없습니다.")
-        
-        initial_value = portfolio_df['total'].iloc[0]
-        final_value = portfolio_df['total'].iloc[-1]
-        total_return_pct = (final_value / initial_value - 1) * 100
-        
-        market_ticker = self.market_indices["KOSPI"]
-        market_prices = prices[market_ticker].dropna()
-        market_return_pct = 0.0
-        if not market_prices.empty:
-            market_initial = market_prices.iloc[0]
-            market_final = market_prices.iloc[-1]
-            if market_initial > 0:
-                market_return_pct = (market_final / market_initial - 1) * 100
-        
-        stock_analysis = []
-        for stock in selected_stocks:
-            ticker = self.stock_code_mapping.get(stock.code)
-            if ticker in prices.columns and not prices[ticker].dropna().empty:
-                s_prices = prices[ticker].dropna()
-                s_initial = s_prices.iloc[0]
-                s_final = s_prices.iloc[-1]
-                s_return = (s_final / s_initial - 1) * 100 if s_initial > 0 else 0
-                stock_analysis.append({"name": stock.name, "code": stock.code, "return_pct": round(s_return, 2)})
+        [과거 사례]
+        {issue_name}
 
-        # [수정] .dict() 대신 수동으로 딕셔너리 생성
-        scenario_info_dict = {
-            "id": scenario.id,
-            "name": scenario.name,
-            "description": scenario.description
-        }
-        
-        return {
-            "scenario_info": scenario_info_dict,
-            "simulation_results": {
-                "initial_amount": int(initial_value),
-                "final_amount": int(final_value),
-                "total_return_pct": round(total_return_pct, 2)
-            },
-            "market_comparison": {"KOSPI_return_pct": round(market_return_pct, 2)},
-            "stock_analysis": stock_analysis,
-            "learning_points": ["시나리오에 맞는 종목 선택이 중요합니다.", f"시장 대비 {round(total_return_pct - market_return_pct, 2)}%p {'초과' if total_return_pct > market_return_pct else '하회'} 수익을 기록했습니다."]
-        }
+        [사용자의 예측 및 실제 결과]
+        {json.dumps(results, indent=2, ensure_ascii=False)}
 
-    async def validate_simulation_inputs(self, scenario_id: str, investment_amount: int, investment_period: int, selected_stocks: List[Dict]) -> Dict:
-        errors, warnings = [], []
-        if scenario_id not in self.scenarios:
-            errors.append("유효하지 않은 시나리오 ID입니다.")
-        if not (10000 <= investment_amount <= 100000000):
-            errors.append("투자 금액은 1만원 이상 1억원 이하여야 합니다.")
-        if not (1 <= investment_period <= 24):
-            errors.append("투자 기간은 1개월에서 24개월 사이여야 합니다.")
-        if not selected_stocks:
-            errors.append("최소 1개 이상의 종목을 선택해야 합니다.")
-        
-        total_alloc = sum(s['allocation'] for s in selected_stocks)
-        if abs(total_alloc - 100.0) > 0.1:
-            warnings.append(f"총 투자 비중이 100%가 아닙니다 (현재: {total_alloc:.1f}%).")
+        [피드백 요청]
+        위 결과를 바탕으로, 다음 항목을 포함하여 사용자에게 유익한 분석 코멘트를 마크다운 형식으로 작성해주세요.
+        1.  **총평**: 전체적인 투자 결과(수익률, 예측 정확도)에 대한 간단한 총평.
+        2.  **잘한 점과 아쉬운 점**: 사용자의 예측 중 맞고 틀린 것을 짚어주고, 왜 그런 결과가 나왔는지 당시 시장 상황과 연관지어 설명.
+        3.  **핵심 교훈 (Key Takeaway)**: 이 과거 사례를 통해 투자자가 배울 수 있는 가장 중요한 교훈 한 가지를 제시.
+        """
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "system", "content": "당신은 투자 결과를 분석하고 조언하는 친절한 AI 멘토입니다."}, {"role": "user", "content": prompt}],
+                temperature=0.5
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"AI 코멘터리 생성 오류: {e}")
+            return "결과 분석 코멘트를 생성하는 데 실패했습니다."
+
+    def create_stock_chart(self, event_date_str: str, tickers: Dict, show_future: bool = False) -> str:
+        """주가 차트를 생성하고 base64 이미지 문자열로 반환"""
+        try:
+            event_date = datetime.strptime(event_date_str, '%Y-%m-%d')
+            start_date = event_date - timedelta(days=60)
+            end_date = event_date + timedelta(days=14) if show_future else event_date + timedelta(days=1)
+
+            fig, ax = plt.subplots(figsize=(12, 6))
+            ax.axvline(x=event_date, color='red', linestyle='--', linewidth=1.5, label=f'이벤트 시점 ({event_date_str})')
+
+            for ticker, name in tickers.items():
+                data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+                if not data.empty:
+                    ax.plot(data.index, data['Close'], label=f'{name} ({ticker})', linewidth=2, alpha=0.8)
+
+            ax.set_title("과거 사례 주가 변동 추이", fontsize=16, weight='bold')
+            ax.legend()
+            ax.grid(True, axis='y', linestyle=':', alpha=0.6)
             
-        return {"valid": not errors, "errors": errors, "warnings": warnings}
+            img = io.BytesIO()
+            fig.savefig(img, format='png', bbox_inches='tight')
+            plt.close(fig)
+            img.seek(0)
+            return base64.b64encode(img.getvalue()).decode('utf8')
+        except Exception as e:
+            print(f"차트 생성 오류: {e}")
+            return ""
 
-# --- Service Singleton & Initialization ---
-engine: Optional[SimulationEngine] = None
+    def get_investment_results(self, event_date_str: str, tickers: Dict, investments: Dict) -> Dict:
+        """사용자의 투자를 기반으로 실제 수익률 및 손익을 계산"""
+        try:
+            event_date = datetime.strptime(event_date_str, '%Y-%m-%d')
+        except ValueError:
+            print(f"오류: 잘못된 날짜 형식입니다 - {event_date_str}")
+            return {ticker: {'status': 'error', 'message': '잘못된 날짜 형식'} for ticker in tickers}
 
-def initialize():
-    global engine
-    if engine is None:
-        engine = SimulationEngine()
-    print("✅ Simulation Service initialized.")
+        # 데이터 다운로드 기간을 충분히 확보
+        start_date_for_download = event_date - timedelta(days=30)
+        end_date_for_download = event_date + timedelta(days=30)
+        results = {}
+        
+        for ticker in tickers.keys():
+            try:
+                print(f"처리 중: {ticker}")
+                
+                # yfinance에서 데이터 다운로드
+                data = yf.download(ticker, start=start_date_for_download, end=end_date_for_download, progress=False)
+                
+                if data.empty:
+                    raise ValueError(f"{ticker}: yfinance에서 데이터를 가져오지 못했습니다.")
+                
+                # 데이터가 있는지 확인
+                print(f"{ticker} 데이터 수: {len(data)}")
+                print(f"{ticker} 날짜 범위: {data.index[0]} ~ {data.index[-1]}")
+                
+                # timezone 처리를 단순화
+                # yfinance 데이터는 보통 timezone이 없거나 UTC
+                data.index = pd.to_datetime(data.index).tz_localize(None)
+                event_date_normalized = pd.Timestamp(event_date).tz_localize(None)
+                
+                # 이벤트 날짜 또는 그 이전의 가장 가까운 거래일 찾기
+                before_event = data[data.index <= event_date_normalized]
+                if before_event.empty:
+                    raise ValueError(f"{ticker}: 이벤트 날짜 이전 데이터가 없습니다.")
+                
+                # 시작 가격 (이벤트 날짜 또는 그 직전 거래일의 종가)
+                start_idx = -1  # 마지막 거래일
+                start_price = float(before_event['Close'].iloc[start_idx])
+                start_date_actual = before_event.index[start_idx]
+                
+                print(f"{ticker} 시작 가격: {start_price} (날짜: {start_date_actual})")
+                
+                # 이벤트 이후 14일 이내의 데이터 찾기
+                after_event = data[data.index > event_date_normalized]
+                if after_event.empty:
+                    raise ValueError(f"{ticker}: 이벤트 이후 데이터가 없습니다.")
+                
+                # 14일 후 또는 가장 가까운 거래일 찾기
+                target_end_date = event_date_normalized + timedelta(days=14)
+                after_event_in_range = after_event[after_event.index <= target_end_date]
+                
+                if after_event_in_range.empty:
+                    # 14일 이내에 거래일이 없으면 그 이후 첫 거래일 사용
+                    print(f"{ticker}: 14일 이내 거래일이 없어 직후 거래일 사용")
+                    end_idx = 0  # 이벤트 이후 첫 거래일
+                    end_price = float(after_event['Close'].iloc[end_idx])
+                    end_date_actual = after_event.index[end_idx]
+                else:
+                    # 14일 이내 마지막 거래일 사용
+                    end_idx = -1
+                    end_price = float(after_event_in_range['Close'].iloc[end_idx])
+                    end_date_actual = after_event_in_range.index[end_idx]
+                
+                print(f"{ticker} 종료 가격: {end_price} (날짜: {end_date_actual})")
+                
+                # 수익률 계산
+                return_rate = ((end_price - start_price) / start_price) * 100
+                investment = investments.get(ticker, 0)
+                
+                # 투자금이 0인 경우 처리
+                if investment == 0:
+                    final_value = 0
+                    profit_loss = 0
+                else:
+                    final_value = investment * (1 + return_rate / 100)
+                    profit_loss = final_value - investment
+                
+                # 상태 결정
+                if return_rate > 0.1:  # 0.1% 이상 상승
+                    status = 'up'
+                elif return_rate < -0.1:  # 0.1% 이상 하락
+                    status = 'down'
+                else:
+                    status = 'flat'  # 거의 변동 없음
+                
+                results[ticker] = {
+                    'status': status,
+                    'return_rate': round(return_rate, 2),
+                    'investment': investment,
+                    'final_value': round(final_value, 2),
+                    'profit_loss': round(profit_loss, 2),
+                    'start_price': round(start_price, 2),
+                    'end_price': round(end_price, 2),
+                    'start_date': start_date_actual.strftime('%Y-%m-%d'),
+                    'end_date': end_date_actual.strftime('%Y-%m-%d')
+                }
+                
+                print(f"{ticker} 결과: 수익률 {return_rate:.2f}%, 상태: {status}")
+                
+            except Exception as e:
+                print(f"❌ 결과 계산 오류 {ticker}: {str(e)}")
+                results[ticker] = {
+                    'status': 'error',
+                    'return_rate': 0,
+                    'investment': investments.get(ticker, 0),
+                    'profit_loss': 0,
+                    'final_value': investments.get(ticker, 0),
+                    'message': str(e),
+                    'start_price': 0,
+                    'end_price': 0,
+                    'start_date': '',
+                    'end_date': ''
+                }
+        
+        print(f"최종 결과: {results}")
+        return results
 
-def is_initialized():
-    return engine is not None
-
-def get_health() -> dict:
-    return {"name": "simulation_service", "status": "ok" if is_initialized() else "error"}
+simulation_service = SimulationService()
